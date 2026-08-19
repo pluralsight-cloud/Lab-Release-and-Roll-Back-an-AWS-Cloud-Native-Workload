@@ -1,0 +1,275 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Initial infrastructure for the Globomantics orders release and rollback lab.
+
+Resources:
+  LabVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: globomantics-orders-lab-vpc
+
+  LabInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: globomantics-orders-lab-igw
+
+  LabInternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId:
+        Ref: LabInternetGateway
+      VpcId:
+        Ref: LabVpc
+
+  LabPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs:
+              Ref: AWS::Region
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: globomantics-orders-lab-public-subnet
+      VpcId:
+        Ref: LabVpc
+
+  LabPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: globomantics-orders-lab-public-routes
+      VpcId:
+        Ref: LabVpc
+
+  LabDefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: LabInternetGatewayAttachment
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: LabInternetGateway
+      RouteTableId:
+        Ref: LabPublicRouteTable
+
+  LabPublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: LabPublicRouteTable
+      SubnetId:
+        Ref: LabPublicSubnet
+
+  LabWorkstationSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH access to the lab workstation.
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: '-1'
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+      VpcId:
+        Ref: LabVpc
+
+  OrdersLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      RoleName: globomantics-orders-lambda-execution-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+
+  OrdersCodeDeployServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRoleForLambda
+      RoleName: globomantics-orders-codedeploy-service-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codedeploy.amazonaws.com
+            Action: sts:AssumeRole
+
+  OrdersFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {
+                  "order_id": "order-1001",
+                  "status": "confirmed",
+                  "version": "v1"
+              }
+      FunctionName: globomantics-orders
+      Handler: index.lambda_handler
+      MemorySize: 128
+      Role:
+        Fn::GetAtt:
+          - OrdersLambdaExecutionRole
+          - Arn
+      Runtime: python3.13
+
+  OrdersV1Version:
+    Type: AWS::Lambda::Version
+    Properties:
+      Description: Initial healthy v1 order confirmation function.
+      FunctionName:
+        Ref: OrdersFunction
+
+  OrdersProdAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName:
+        Ref: OrdersFunction
+      FunctionVersion:
+        Fn::GetAtt:
+          - OrdersV1Version
+          - Version
+      Name: prod
+
+  OrdersCodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: globomantics-orders-app
+      ComputePlatform: Lambda
+
+  OrdersDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName:
+        Ref: OrdersCodeDeployApplication
+      AutoRollbackConfiguration:
+        Enabled: true
+        Events:
+          - DEPLOYMENT_STOP_ON_REQUEST
+      DeploymentConfigName: CodeDeployDefault.LambdaCanary10Percent5Minutes
+      DeploymentGroupName: globomantics-orders-dg
+      DeploymentStyle:
+        DeploymentOption: WITH_TRAFFIC_CONTROL
+        DeploymentType: BLUE_GREEN
+      ServiceRoleArn:
+        Fn::GetAtt:
+          - OrdersCodeDeployServiceRole
+          - Arn
+
+  OrdersErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Alarm when the orders Lambda function records an error.
+      AlarmName: globomantics-orders-errors
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value:
+            Ref: OrdersFunction
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 60
+      Statistic: Sum
+      Threshold: 0
+      TreatMissingData: notBreaching
+
+  LabWorkstation:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: '%ami-259%'
+      InstanceType: t3.small
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: '0'
+          GroupSet:
+            - Ref: LabWorkstationSecurityGroup
+          SubnetId:
+            Ref: LabPublicSubnet
+      Tags:
+        - Key: Name
+          Value: globomantics-orders-lab-workstation
+      UserData:
+        Fn::Base64:
+          |
+            #!/bin/bash
+            echo 'cloud_user:%password%' | chpasswd
+
+Outputs:
+  pubIpAddress:
+    Description: Public IP address of the lab workstation.
+    Value:
+      Fn::GetAtt:
+        - LabWorkstation
+        - PublicIp
+
+  OrdersFunctionName:
+    Description: Name of the orders Lambda function.
+    Value:
+      Ref: OrdersFunction
+
+  OrdersProdAliasName:
+    Description: Name of the production Lambda alias.
+    Value: prod
+
+  OrdersV1Version:
+    Description: Published version for the healthy v1 orders Lambda function.
+    Value:
+      Fn::GetAtt:
+        - OrdersV1Version
+        - Version
+
+  OrdersCodeDeployApplicationName:
+    Description: Name of the CodeDeploy application.
+    Value:
+      Ref: OrdersCodeDeployApplication
+
+  OrdersDeploymentGroupName:
+    Description: Name of the CodeDeploy deployment group.
+    Value:
+      Ref: OrdersDeploymentGroup
+
+  OrdersErrorsAlarmName:
+    Description: Name of the independent Lambda errors alarm.
+    Value:
+      Ref: OrdersErrorsAlarm
+
+  OrdersCodeDeployServiceRoleArn:
+    Description: ARN of the CodeDeploy service role.
+    Value:
+      Fn::GetAtt:
+        - OrdersCodeDeployServiceRole
+        - Arn
+
+  LabWorkstationId:
+    Description: Instance ID of the lab workstation.
+    Value:
+      Ref: LabWorkstation
+
+  LabWorkstationPrivateIp:
+    Description: Private IP address of the lab workstation.
+    Value:
+      Fn::GetAtt:
+        - LabWorkstation
+        - PrivateIp
