@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import importlib.util
+import json
 import re
 import shlex
 import subprocess
@@ -191,6 +192,88 @@ signal_bootstrap FAILURE
                     f"--unique-id i-diagnostic-{expected_stage} "
                     "--status FAILURE --region us-east-1 --no-cli-pager",
                 )
+
+    def test_bootstrap_verifies_alias_and_direct_v1_v2_behavior(self):
+        template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
+        user_data = template["Resources"]["LabWorkstation"]["Properties"]["UserData"][
+            "Fn::Base64"
+        ]["Fn::Sub"]
+        verifier = extract_shell_function(user_data, "verify_seed_state")
+
+        fake_aws = r"""
+aws() {
+  case " $* " in
+    *' lambda get-alias '*)
+      printf '%s\n' '{"FunctionVersion":"1"}'
+      ;;
+    *' lambda invoke '*' --qualifier 1 '*)
+      output_file="${!#}"
+      printf '%s\n' '{"order_id":"order-1001","status":"confirmed","version":"v1"}' > "$output_file"
+      printf '%s\n' '{"StatusCode":200,"ExecutedVersion":"1"}'
+      ;;
+    *' lambda invoke '*' --qualifier 2 '*)
+      output_file="${!#}"
+      printf '%s\n' '{"errorMessage":"Simulated v2 order-processing failure.","errorType":"RuntimeError"}' > "$output_file"
+      if [ "$FAKE_SCENARIO" = 'bad-v2-metadata' ]; then
+        printf '%s\n' '{"StatusCode":200,"ExecutedVersion":"2"}'
+      else
+        printf '%s\n' '{"StatusCode":200,"FunctionError":"Unhandled","ExecutedVersion":"2"}'
+      fi
+      ;;
+    *)
+      printf '%s\n' "unexpected fake AWS call: $*" >&2
+      return 64
+      ;;
+  esac
+}
+"""
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            lab_root = Path(temporary_directory) / "lab"
+            state_directory = lab_root / "state"
+            state_directory.mkdir(parents=True)
+
+            for scenario, expected_return_code in (
+                ("healthy", 0),
+                ("bad-v2-metadata", 1),
+            ):
+                with self.subTest(scenario=scenario):
+                    for path in state_directory.iterdir():
+                        path.unlink()
+
+                    diagnostic_script = f"""
+set -euo pipefail
+{verifier}
+{fake_aws}
+LAB_ROOT={shlex.quote(str(lab_root))}
+FUNCTION_NAME=globomantics-orders
+FAKE_SCENARIO={shlex.quote(scenario)}
+verify_seed_state
+"""
+                    result = subprocess.run(
+                        ["bash", "-c", diagnostic_script],
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertEqual(result.returncode, expected_return_code)
+
+                    if expected_return_code == 0:
+                        self.assertEqual(
+                            json.loads((state_directory / "prod-alias.json").read_text()),
+                            {"FunctionVersion": "1"},
+                        )
+                        self.assertEqual(
+                            json.loads((state_directory / "v1-invoke.json").read_text()),
+                            {"StatusCode": 200, "ExecutedVersion": "1"},
+                        )
+                        self.assertEqual(
+                            json.loads((state_directory / "v2-invoke.json").read_text()),
+                            {
+                                "StatusCode": 200,
+                                "FunctionError": "Unhandled",
+                                "ExecutedVersion": "2",
+                            },
+                        )
 
 
 if __name__ == "__main__":

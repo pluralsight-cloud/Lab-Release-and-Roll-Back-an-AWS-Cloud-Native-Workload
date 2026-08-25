@@ -333,6 +333,80 @@ Resources:
               esac
             }
 
+            verify_seed_state() {
+              ALIAS_STATE="$LAB_ROOT/state/prod-alias.json"
+              V1_INVOKE="$LAB_ROOT/state/v1-invoke.json"
+              V1_PAYLOAD="$LAB_ROOT/state/v1-payload.json"
+              V2_INVOKE="$LAB_ROOT/state/v2-invoke.json"
+              V2_PAYLOAD="$LAB_ROOT/state/v2-payload.json"
+
+              aws lambda get-alias \
+                --function-name "$FUNCTION_NAME" \
+                --name prod \
+                --output json \
+                --no-cli-pager > "$ALIAS_STATE"
+
+              aws lambda invoke \
+                --function-name "$FUNCTION_NAME" \
+                --qualifier 1 \
+                --payload '{}' \
+                --cli-binary-format raw-in-base64-out \
+                --no-cli-pager \
+                "$V1_PAYLOAD" > "$V1_INVOKE"
+
+              aws lambda invoke \
+                --function-name "$FUNCTION_NAME" \
+                --qualifier 2 \
+                --payload '{}' \
+                --cli-binary-format raw-in-base64-out \
+                --no-cli-pager \
+                "$V2_PAYLOAD" > "$V2_INVOKE"
+
+              python3 - \
+                "$ALIAS_STATE" \
+                "$V1_INVOKE" \
+                "$V1_PAYLOAD" \
+                "$V2_INVOKE" \
+                "$V2_PAYLOAD" <<'PY'
+            import json
+            import sys
+
+            alias_state, v1_invoke, v1_payload, v2_invoke, v2_payload = (
+                json.load(open(path, encoding="utf-8"))
+                for path in sys.argv[1:]
+            )
+
+            if alias_state.get("FunctionVersion") != "1":
+                raise SystemExit("prod alias is not pinned to version 1")
+            if alias_state.get("RoutingConfig") not in (None, {}):
+                raise SystemExit("prod alias has unexpected routing weight")
+
+            if v1_invoke.get("StatusCode") != 200:
+                raise SystemExit("direct v1 invoke did not return status 200")
+            if v1_invoke.get("FunctionError") is not None:
+                raise SystemExit("direct v1 invoke returned FunctionError")
+            if v1_invoke.get("ExecutedVersion") != "1":
+                raise SystemExit("direct v1 invoke did not execute version 1")
+            if v1_payload != {
+                "order_id": "order-1001",
+                "status": "confirmed",
+                "version": "v1",
+            }:
+                raise SystemExit("direct v1 invoke returned an unexpected payload")
+
+            if v2_invoke.get("StatusCode") != 200:
+                raise SystemExit("direct v2 invoke did not return status 200")
+            if v2_invoke.get("FunctionError") != "Unhandled":
+                raise SystemExit("direct v2 invoke did not return FunctionError")
+            if v2_invoke.get("ExecutedVersion") != "2":
+                raise SystemExit("direct v2 invoke did not execute version 2")
+            if v2_payload.get("errorType") != "RuntimeError":
+                raise SystemExit("direct v2 invoke returned an unexpected error type")
+            if v2_payload.get("errorMessage") != "Simulated v2 order-processing failure.":
+                raise SystemExit("direct v2 invoke returned an unexpected error message")
+            PY
+            }
+
             signal_bootstrap() {
               UNIQUE_ID="$INSTANCE_ID"
               if [ "$1" = 'FAILURE' ]; then
@@ -410,9 +484,12 @@ Resources:
               exit 1
             fi
 
+            BOOTSTRAP_STAGE=seed-verification
+            verify_seed_state
+
             BOOTSTRAP_STAGE=state-file
             printf '%s\n' "$V2_VERSION" > "$LAB_ROOT/state/v2-version.txt"
-            chown cloud_user:cloud_user "$LAB_ROOT/state/v2-version.txt"
+            chown cloud_user:cloud_user "$LAB_ROOT/state/"*
 
             BOOTSTRAP_STAGE=iam-policy-delete
             aws iam delete-role-policy \
