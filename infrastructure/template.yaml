@@ -163,6 +163,25 @@ Resources:
                   - cloudwatch:DescribeAlarmHistory
                   - cloudwatch:DescribeAlarms
                 Resource: '*'
+              - Sid: SignalWorkstationReadiness
+                Effect: Allow
+                Action: cloudformation:SignalResource
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*
+        - PolicyName: globomantics-orders-v2-bootstrap
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: PublishOrdersV2DuringBootstrap
+                Effect: Allow
+                Action: lambda:UpdateFunctionCode
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:globomantics-orders
+              - Sid: RemoveOrdersV2BootstrapPermission
+                Effect: Allow
+                Action: iam:DeleteRolePolicy
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/globomantics-orders-workstation-role
 
   LabWorkstationInstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -254,6 +273,13 @@ Resources:
 
   LabWorkstation:
     Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT10M
+    DependsOn:
+      - OrdersProdAlias
+      - LabPublicSubnetRouteTableAssociation
     Properties:
       IamInstanceProfile:
         Ref: LabWorkstationInstanceProfile
@@ -271,9 +297,95 @@ Resources:
           Value: globomantics-orders-lab-workstation
       UserData:
         Fn::Base64:
-          |
+          Fn::Sub: |
             #!/bin/bash
+            set -euo pipefail
+
             echo 'cloud_user:%password%' | chpasswd
+
+            LAB_ROOT=/home/cloud_user/lab
+            V2_ARCHIVE=$LAB_ROOT/assets/function/v2.zip
+            V2_SHA256=2027a77a46868f6ac0a806d6cf0c5971fddcc72e8196009a507248fedcce72de
+            FUNCTION_NAME=globomantics-orders
+            ROLE_NAME=globomantics-orders-workstation-role
+            BOOTSTRAP_POLICY_NAME=globomantics-orders-v2-bootstrap
+            STACK_NAME=${AWS::StackName}
+            AWS_REGION=${AWS::Region}
+            INSTANCE_ID=$(cat /var/lib/cloud/data/instance-id 2>/dev/null || hostname)
+
+            signal_bootstrap() {
+              aws cloudformation signal-resource \
+                --stack-name "$STACK_NAME" \
+                --logical-resource-id LabWorkstation \
+                --unique-id "$INSTANCE_ID" \
+                --status "$1" \
+                --region "$AWS_REGION" \
+                --no-cli-pager
+            }
+            trap 'signal_bootstrap FAILURE' ERR
+
+            install -d -o cloud_user -g cloud_user \
+              "$LAB_ROOT/assets/function" \
+              "$LAB_ROOT/state"
+
+            base64 --decode > "$V2_ARCHIVE" <<'V2_ZIP_BASE64'
+            UEsDBBQAAAAAAAAAIQB13Wo5sAAAALAAAAAIAAAAaW5kZXgucHlkZWYgbGFtYmRhX2hhbmRsZXIoZXZlbnQsIGNvbnRleHQpOgogICAgIiIiUmVwcmVzZW50IHRoZSBkZXRlcm1pbmlzdGljIGZhaWx1cmUgcGxhbnRlZCBpbiBvcmRlcnMgdmVyc2lvbiAyLiIiIgogICAgcmFpc2UgUnVudGltZUVycm9yKCJTaW11bGF0ZWQgdjIgb3JkZXItcHJvY2Vzc2luZyBmYWlsdXJlLiIpClBLAQIUAxQAAAAAAAAAIQB13Wo5sAAAALAAAAAIAAAAAAAAAAAAAACkgQAAAABpbmRleC5weVBLBQYAAAAAAQABADYAAADWAAAAAAA=
+            V2_ZIP_BASE64
+
+            echo "$V2_SHA256  $V2_ARCHIVE" | sha256sum --check --status
+            chown cloud_user:cloud_user "$V2_ARCHIVE"
+
+            for attempt in $(seq 1 30); do
+              if aws sts get-caller-identity >/dev/null 2>&1; then
+                break
+              fi
+              sleep 2
+            done
+            aws sts get-caller-identity >/dev/null
+
+            UPDATE_PERMISSION_READY=false
+            for attempt in $(seq 1 30); do
+              if aws lambda update-function-code \
+                --function-name "$FUNCTION_NAME" \
+                --zip-file "fileb://$V2_ARCHIVE" \
+                --dry-run \
+                --no-cli-pager >/dev/null 2>&1; then
+                UPDATE_PERMISSION_READY=true
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$UPDATE_PERMISSION_READY" != 'true' ]; then
+              echo 'Timed out waiting for the v2 bootstrap permission.' >&2
+              exit 1
+            fi
+
+            V2_VERSION=$(aws lambda update-function-code \
+              --function-name "$FUNCTION_NAME" \
+              --zip-file "fileb://$V2_ARCHIVE" \
+              --publish \
+              --query Version \
+              --output text \
+              --no-cli-pager)
+
+            aws lambda wait function-updated-v2 \
+              --function-name "$FUNCTION_NAME"
+
+            if [ "$V2_VERSION" != '2' ]; then
+              echo "Expected published version 2, received $V2_VERSION." >&2
+              exit 1
+            fi
+
+            printf '%s\n' "$V2_VERSION" > "$LAB_ROOT/state/v2-version.txt"
+            chown cloud_user:cloud_user "$LAB_ROOT/state/v2-version.txt"
+
+            aws iam delete-role-policy \
+              --role-name "$ROLE_NAME" \
+              --policy-name "$BOOTSTRAP_POLICY_NAME"
+
+            signal_bootstrap SUCCESS
+            trap - ERR
 
 Outputs:
   pubIpAddress:
@@ -298,6 +410,10 @@ Outputs:
       Fn::GetAtt:
         - OrdersV1Version
         - Version
+
+  OrdersV2Version:
+    Description: Published version for the deterministic failing v2 orders Lambda function.
+    Value: '2'
 
   OrdersCodeDeployApplicationName:
     Description: Name of the CodeDeploy application.
