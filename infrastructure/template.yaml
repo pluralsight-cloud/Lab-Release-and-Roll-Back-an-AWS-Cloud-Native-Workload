@@ -113,6 +113,62 @@ Resources:
               Service: codedeploy.amazonaws.com
             Action: sts:AssumeRole
 
+  LabWorkstationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: globomantics-orders-workstation-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: globomantics-orders-workstation-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: InspectAndInvokeOrdersWorkload
+                Effect: Allow
+                Action:
+                  - lambda:GetAlias
+                  - lambda:GetFunctionConfiguration
+                  - lambda:InvokeFunction
+                  - lambda:ListVersionsByFunction
+                Resource:
+                  - Fn::Sub: arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:globomantics-orders
+                  - Fn::Sub: arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:globomantics-orders:*
+              - Sid: OperateOrdersDeployment
+                Effect: Allow
+                Action:
+                  - codedeploy:CreateDeployment
+                  - codedeploy:GetApplication
+                  - codedeploy:GetDeployment
+                  - codedeploy:GetDeploymentConfig
+                  - codedeploy:GetDeploymentGroup
+                  - codedeploy:ListDeployments
+                Resource:
+                  - Fn::Sub: arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:application:globomantics-orders-app
+                  - Fn::Sub: arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:globomantics-orders-app/globomantics-orders-dg
+                  - Fn::Sub: arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentconfig:CodeDeployDefault.LambdaCanary10Percent5Minutes
+              - Sid: StopOrdersDeployment
+                Effect: Allow
+                Action: codedeploy:StopDeployment
+                Resource: '*'
+              - Sid: InspectOrdersAlarm
+                Effect: Allow
+                Action:
+                  - cloudwatch:DescribeAlarmHistory
+                  - cloudwatch:DescribeAlarms
+                Resource: '*'
+
+  LabWorkstationInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: LabWorkstationRole
+
   OrdersFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -198,6 +254,8 @@ Resources:
   LabWorkstation:
     Type: AWS::EC2::Instance
     Properties:
+      IamInstanceProfile:
+        Ref: LabWorkstationInstanceProfile
       ImageId: '%ami-259%'
       InstanceType: t3.small
       NetworkInterfaces:
@@ -266,6 +324,13 @@ Outputs:
     Description: Instance ID of the lab workstation.
     Value:
       Ref: LabWorkstation
+
+  LabWorkstationRoleArn:
+    Description: ARN of the scoped role used by the lab workstation.
+    Value:
+      Fn::GetAtt:
+        - LabWorkstationRole
+        - Arn
 
   LabWorkstationPrivateIp:
     Description: Private IP address of the lab workstation.
