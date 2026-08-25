@@ -312,18 +312,41 @@ Resources:
             STACK_NAME=${AWS::StackName}
             AWS_REGION=${AWS::Region}
             INSTANCE_ID=$(cat /var/lib/cloud/data/instance-id 2>/dev/null || hostname)
+            BOOTSTRAP_STAGE=bootstrap-start
+
+            classify_update_error() {
+              case "$1" in
+                *'You must specify a region'*)
+                  printf '%s\n' 'lambda-no-region'
+                  ;;
+                *'AccessDenied'*|*'not authorized to perform'*)
+                  printf '%s\n' 'lambda-access-denied'
+                  ;;
+                *'Unknown options'*)
+                  printf '%s\n' 'lambda-cli-unsupported'
+                  ;;
+                *)
+                  printf '%s\n' 'lambda-update-timeout'
+                  ;;
+              esac
+            }
 
             signal_bootstrap() {
+              UNIQUE_ID="$INSTANCE_ID"
+              if [ "$1" = 'FAILURE' ]; then
+                UNIQUE_ID="$INSTANCE_ID-$BOOTSTRAP_STAGE"
+              fi
               aws cloudformation signal-resource \
                 --stack-name "$STACK_NAME" \
                 --logical-resource-id LabWorkstation \
-                --unique-id "$INSTANCE_ID" \
+                --unique-id "$UNIQUE_ID" \
                 --status "$1" \
                 --region "$AWS_REGION" \
                 --no-cli-pager
             }
             trap 'signal_bootstrap FAILURE' ERR
 
+            BOOTSTRAP_STAGE=archive-seed
             install -d -o cloud_user -g cloud_user \
               "$LAB_ROOT/assets/function" \
               "$LAB_ROOT/state"
@@ -335,6 +358,7 @@ Resources:
             echo "$V2_SHA256  $V2_ARCHIVE" | sha256sum --check --status
             chown cloud_user:cloud_user "$V2_ARCHIVE"
 
+            BOOTSTRAP_STAGE=sts-credentials
             for attempt in $(seq 1 30); do
               if aws sts get-caller-identity >/dev/null 2>&1; then
                 break
@@ -343,13 +367,15 @@ Resources:
             done
             aws sts get-caller-identity >/dev/null
 
+            BOOTSTRAP_STAGE=lambda-update-readiness
             UPDATE_PERMISSION_READY=false
+            UPDATE_ERROR=$(mktemp)
             for attempt in $(seq 1 30); do
               if aws lambda update-function-code \
                 --function-name "$FUNCTION_NAME" \
                 --zip-file "fileb://$V2_ARCHIVE" \
                 --dry-run \
-                --no-cli-pager >/dev/null 2>&1; then
+                --no-cli-pager >/dev/null 2>"$UPDATE_ERROR"; then
                 UPDATE_PERMISSION_READY=true
                 break
               fi
@@ -357,10 +383,13 @@ Resources:
             done
 
             if [ "$UPDATE_PERMISSION_READY" != 'true' ]; then
-              echo 'Timed out waiting for the v2 bootstrap permission.' >&2
+              BOOTSTRAP_STAGE=$(classify_update_error "$(cat "$UPDATE_ERROR")")
+              echo "V2 bootstrap readiness failed at $BOOTSTRAP_STAGE." >&2
               exit 1
             fi
+            rm -f "$UPDATE_ERROR"
 
+            BOOTSTRAP_STAGE=lambda-publish
             V2_VERSION=$(aws lambda update-function-code \
               --function-name "$FUNCTION_NAME" \
               --zip-file "fileb://$V2_ARCHIVE" \
@@ -369,21 +398,26 @@ Resources:
               --output text \
               --no-cli-pager)
 
+            BOOTSTRAP_STAGE=lambda-wait
             aws lambda wait function-updated-v2 \
               --function-name "$FUNCTION_NAME"
 
+            BOOTSTRAP_STAGE=lambda-version-check
             if [ "$V2_VERSION" != '2' ]; then
               echo "Expected published version 2, received $V2_VERSION." >&2
               exit 1
             fi
 
+            BOOTSTRAP_STAGE=state-file
             printf '%s\n' "$V2_VERSION" > "$LAB_ROOT/state/v2-version.txt"
             chown cloud_user:cloud_user "$LAB_ROOT/state/v2-version.txt"
 
+            BOOTSTRAP_STAGE=iam-policy-delete
             aws iam delete-role-policy \
               --role-name "$ROLE_NAME" \
               --policy-name "$BOOTSTRAP_POLICY_NAME"
 
+            BOOTSTRAP_STAGE=complete
             signal_bootstrap SUCCESS
             trap - ERR
 

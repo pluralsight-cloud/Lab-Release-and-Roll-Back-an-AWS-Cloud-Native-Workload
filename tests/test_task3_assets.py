@@ -1,6 +1,8 @@
 import base64
 import hashlib
 import importlib.util
+import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -17,6 +19,16 @@ FUNCTION_ARCHIVE = REPOSITORY_ROOT / "assets/function/v2.zip"
 FUNCTION_CHECKSUM = REPOSITORY_ROOT / "assets/function/v2.zip.sha256"
 PACKAGE_SCRIPT = REPOSITORY_ROOT / "scripts/package-v2.py"
 TEMPLATE = REPOSITORY_ROOT / "infrastructure/template.yaml"
+
+
+def extract_shell_function(script, function_name):
+    match = re.search(
+        rf"(?ms)^{re.escape(function_name)}\(\) \{{\n.*?^\}}$",
+        script,
+    )
+    if match is None:
+        raise AssertionError(f"missing {function_name} shell function")
+    return match.group(0)
 
 
 class Task3AssetTests(unittest.TestCase):
@@ -130,6 +142,49 @@ class Task3AssetTests(unittest.TestCase):
         self.assertIn("SUCCESS", user_data)
 
         self.assertEqual(template["Outputs"]["OrdersV2Version"]["Value"], "2")
+
+    def test_bootstrap_failure_signal_classifies_the_last_lambda_update_error(self):
+        template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
+        user_data = template["Resources"]["LabWorkstation"]["Properties"]["UserData"][
+            "Fn::Base64"
+        ]["Fn::Sub"]
+        classifier = extract_shell_function(user_data, "classify_update_error")
+        signaler = extract_shell_function(user_data, "signal_bootstrap")
+
+        cases = {
+            "You must specify a region. You can also configure your region": "lambda-no-region",
+            "AccessDeniedException: not authorized to perform lambda:UpdateFunctionCode": "lambda-access-denied",
+            "Unknown options: --dry-run": "lambda-cli-unsupported",
+            "An error occurred (ResourceConflictException)": "lambda-update-timeout",
+        }
+
+        for error_message, expected_stage in cases.items():
+            with self.subTest(expected_stage=expected_stage):
+                diagnostic_script = f"""
+set -euo pipefail
+{classifier}
+{signaler}
+aws() {{ printf '%s\\n' "$*"; }}
+INSTANCE_ID=i-diagnostic
+STACK_NAME=diagnostic-stack
+AWS_REGION=us-east-1
+BOOTSTRAP_STAGE=$(classify_update_error {shlex.quote(error_message)})
+signal_bootstrap FAILURE
+"""
+                result = subprocess.run(
+                    ["bash", "-c", diagnostic_script],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(
+                    result.stdout.strip(),
+                    "cloudformation signal-resource "
+                    "--stack-name diagnostic-stack "
+                    "--logical-resource-id LabWorkstation "
+                    f"--unique-id i-diagnostic-{expected_stage} "
+                    "--status FAILURE --region us-east-1 --no-cli-pager",
+                )
 
 
 if __name__ == "__main__":
