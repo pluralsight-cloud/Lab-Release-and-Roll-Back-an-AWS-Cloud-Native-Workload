@@ -174,7 +174,9 @@ Resources:
             Statement:
               - Sid: PublishOrdersV2DuringBootstrap
                 Effect: Allow
-                Action: lambda:UpdateFunctionCode
+                Action:
+                  - lambda:GetFunction
+                  - lambda:UpdateFunctionCode
                 Resource:
                   Fn::Sub: arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:globomantics-orders
               - Sid: RemoveOrdersV2BootstrapPermission

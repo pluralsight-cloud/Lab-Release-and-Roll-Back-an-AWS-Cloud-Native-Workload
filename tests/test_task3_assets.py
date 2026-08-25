@@ -100,9 +100,14 @@ class Task3AssetTests(unittest.TestCase):
             for policy in role["Properties"]["Policies"]
         }
         bootstrap_statements = policies["globomantics-orders-v2-bootstrap"]
+        bootstrap_lambda_actions = bootstrap_statements[0]["Action"]
         self.assertEqual(
-            bootstrap_statements[0]["Action"],
-            "lambda:UpdateFunctionCode",
+            set(
+                bootstrap_lambda_actions
+                if isinstance(bootstrap_lambda_actions, list)
+                else [bootstrap_lambda_actions]
+            ),
+            {"lambda:GetFunction", "lambda:UpdateFunctionCode"},
         )
         self.assertEqual(
             bootstrap_statements[1]["Action"],
@@ -119,6 +124,7 @@ class Task3AssetTests(unittest.TestCase):
             )
         }
         self.assertNotIn("lambda:UpdateFunctionCode", learner_actions)
+        self.assertNotIn("lambda:GetFunction", learner_actions)
         self.assertNotIn("iam:DeleteRolePolicy", learner_actions)
         self.assertIn("cloudformation:SignalResource", learner_actions)
 
