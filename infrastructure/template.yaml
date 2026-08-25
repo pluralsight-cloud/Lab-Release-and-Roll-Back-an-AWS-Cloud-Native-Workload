@@ -148,6 +148,7 @@ Resources:
                   - codedeploy:GetDeploymentConfig
                   - codedeploy:GetDeploymentGroup
                   - codedeploy:ListDeployments
+                  - codedeploy:RegisterApplicationRevision
                 Resource:
                   - Fn::Sub: arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:application:globomantics-orders-app
                   - Fn::Sub: arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:globomantics-orders-app/globomantics-orders-dg
