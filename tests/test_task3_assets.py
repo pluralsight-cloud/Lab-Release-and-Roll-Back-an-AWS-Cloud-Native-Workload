@@ -115,7 +115,7 @@ class Task3AssetTests(unittest.TestCase):
         )
         self.assertEqual(
             bootstrap_statements[1]["Action"],
-            "cloudwatch:GetMetricStatistics",
+            "cloudwatch:GetMetricData",
         )
         self.assertEqual(
             bootstrap_statements[2]["Action"],
@@ -134,7 +134,7 @@ class Task3AssetTests(unittest.TestCase):
         self.assertNotIn("lambda:UpdateFunctionCode", learner_actions)
         self.assertNotIn("lambda:GetFunction", learner_actions)
         self.assertNotIn("iam:DeleteRolePolicy", learner_actions)
-        self.assertNotIn("cloudwatch:GetMetricStatistics", learner_actions)
+        self.assertNotIn("cloudwatch:GetMetricData", learner_actions)
         self.assertIn("cloudformation:SignalResource", learner_actions)
 
         archive_sha256 = hashlib.sha256(FUNCTION_ARCHIVE.read_bytes()).hexdigest()

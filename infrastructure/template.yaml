@@ -182,7 +182,7 @@ Resources:
                   Fn::Sub: arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:globomantics-orders
               - Sid: VerifyOrdersAlarmDatapointDuringBootstrap
                 Effect: Allow
-                Action: cloudwatch:GetMetricStatistics
+                Action: cloudwatch:GetMetricData
                 Resource: '*'
               - Sid: RemoveOrdersV2BootstrapPermission
                 Effect: Allow
@@ -262,21 +262,41 @@ Resources:
   OrdersErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmDescription: Alarm when the orders Lambda function records an error.
+      AlarmDescription: Alarm when real prod-alias traffic records an error.
       AlarmName: globomantics-orders-errors
       ComparisonOperator: GreaterThanThreshold
-      Dimensions:
-        - Name: Resource
-          Value:
-            Fn::Sub: ${OrdersFunction}:prod
       EvaluationPeriods: 1
       DatapointsToAlarm: 1
-      MetricName: Errors
-      Namespace: AWS/Lambda
-      Period: 60
-      Statistic: Sum
+      Metrics:
+        - Id: errors
+          MetricStat:
+            Metric:
+              Dimensions:
+                - Name: Resource
+                  Value:
+                    Fn::Sub: ${OrdersFunction}:prod
+              MetricName: Errors
+              Namespace: AWS/Lambda
+            Period: 60
+            Stat: Sum
+          ReturnData: false
+        - Id: invocations
+          MetricStat:
+            Metric:
+              Dimensions:
+                - Name: Resource
+                  Value:
+                    Fn::Sub: ${OrdersFunction}:prod
+              MetricName: Invocations
+              Namespace: AWS/Lambda
+            Period: 60
+            Stat: Sum
+          ReturnData: false
+        - Expression: IF(invocations>0,FILL(errors,0))
+          Id: health
+          ReturnData: true
       Threshold: 0
-      TreatMissingData: notBreaching
+      TreatMissingData: breaching
 
   LabWorkstation:
     Type: AWS::EC2::Instance
@@ -390,13 +410,30 @@ Resources:
             PY
             }
             prewarm_alarm() {
-              ALARM_QUERY='MetricAlarms[0].{AlarmName:AlarmName,ComparisonOperator:ComparisonOperator,DatapointsToAlarm:DatapointsToAlarm,Dimensions:Dimensions,EvaluationPeriods:EvaluationPeriods,MetricName:MetricName,Namespace:Namespace,Period:Period,StateValue:StateValue,Statistic:Statistic,Threshold:Threshold,TreatMissingData:TreatMissingData}'
+              ALARM_QUERY='MetricAlarms[0].{AlarmName:AlarmName,ComparisonOperator:ComparisonOperator,DatapointsToAlarm:DatapointsToAlarm,EvaluationPeriods:EvaluationPeriods,Metrics:Metrics,StateValue:StateValue,Threshold:Threshold,TreatMissingData:TreatMissingData}'
               ALARM_BEFORE="$LAB_ROOT/state/alarm-before.json"
               ALARM_READY="$LAB_ROOT/state/alarm-ready.json"
               ALARM_ZERO="$LAB_ROOT/state/alarm-zero-datapoints.json"
               ALARM_V1_INVOKE=$(mktemp)
               ALARM_V1_PAYLOAD=$(mktemp)
               METRIC_DATA=$(mktemp)
+              METRIC_QUERIES=$(mktemp)
+              python3 - "$FUNCTION_NAME" > "$METRIC_QUERIES" <<'PY'
+            import json
+            import sys
+
+            dimension = [dict(Name="Resource", Value=f"{sys.argv[1]}:prod")]
+            metric_stat = lambda name: dict(
+                Metric=dict(Namespace="AWS/Lambda", MetricName=name, Dimensions=dimension),
+                Period=60,
+                Stat="Sum",
+            )
+            print(json.dumps([
+                dict(Id="errors", MetricStat=metric_stat("Errors"), ReturnData=False),
+                dict(Id="invocations", MetricStat=metric_stat("Invocations"), ReturnData=False),
+                dict(Id="health", Expression="IF(invocations>0,FILL(errors,0))", ReturnData=True),
+            ]))
+            PY
               aws cloudwatch describe-alarms \
                 --alarm-names "$ALARM_NAME" \
                 --query "$ALARM_QUERY" \
@@ -443,14 +480,10 @@ Resources:
             print(start.strftime(timestamp), end.strftime(timestamp))
             PY
                 )
-                aws cloudwatch get-metric-statistics \
-                  --namespace AWS/Lambda \
-                  --metric-name Errors \
-                  --dimensions Name=Resource,Value="$FUNCTION_NAME:prod" \
+                aws cloudwatch get-metric-data \
+                  --metric-data-queries "file://$METRIC_QUERIES" \
                   --start-time "$METRIC_START" \
                   --end-time "$METRIC_END" \
-                  --period 60 \
-                  --statistics Sum \
                   --output json \
                   --no-cli-pager > "$METRIC_DATA"
 
@@ -464,23 +497,46 @@ Resources:
                 AlarmName="globomantics-orders-errors",
                 ComparisonOperator="GreaterThanThreshold",
                 DatapointsToAlarm=1,
-                Dimensions=[dict(Name="Resource", Value="globomantics-orders:prod")],
                 EvaluationPeriods=1,
-                MetricName="Errors",
-                Namespace="AWS/Lambda",
-                Period=60,
+                Metrics=[
+                    dict(
+                        Id="errors",
+                        MetricStat=dict(
+                            Metric=dict(
+                                Dimensions=[dict(Name="Resource", Value="globomantics-orders:prod")],
+                                MetricName="Errors",
+                                Namespace="AWS/Lambda",
+                            ),
+                            Period=60,
+                            Stat="Sum",
+                        ),
+                        ReturnData=False,
+                    ),
+                    dict(
+                        Id="invocations",
+                        MetricStat=dict(
+                            Metric=dict(
+                                Dimensions=[dict(Name="Resource", Value="globomantics-orders:prod")],
+                                MetricName="Invocations",
+                                Namespace="AWS/Lambda",
+                            ),
+                            Period=60,
+                            Stat="Sum",
+                        ),
+                        ReturnData=False,
+                    ),
+                    dict(Id="health", Expression="IF(invocations>0,FILL(errors,0))", ReturnData=True),
+                ],
                 StateValue="OK",
-                Statistic="Sum",
                 Threshold=0.0,
-                TreatMissingData="notBreaching",
+                TreatMissingData="breaching",
             )
             if alarm != expected:
                 raise SystemExit("orders errors alarm configuration is unexpected")
-            datapoints = metric_data.get("Datapoints") or []
-            if not any(
-                float(point.get("SampleCount", 0)) >= 1
-                and float(point.get("Sum", 1)) == 0
-                for point in datapoints
+            results = metric_data.get("MetricDataResults") or []
+            health = [result for result in results if result.get("Id") == "health"]
+            if len(health) != 1 or not any(
+                float(value) == 0 for value in health[0].get("Values", [])
             ):
                 raise SystemExit("orders errors alarm OK state has no real zero-error datapoint")
             PY
@@ -494,12 +550,12 @@ Resources:
               done
 
               if [ "$ALARM_READY_REACHED" != 'true' ]; then
-                rm -f "$ALARM_V1_INVOKE" "$ALARM_V1_PAYLOAD" "$METRIC_DATA"
+                rm -f "$ALARM_V1_INVOKE" "$ALARM_V1_PAYLOAD" "$METRIC_DATA" "$METRIC_QUERIES"
                 echo 'Orders errors alarm did not reach OK with a real zero-error datapoint.' >&2
                 exit 1
               fi
 
-              rm -f "$ALARM_V1_INVOKE" "$ALARM_V1_PAYLOAD"
+              rm -f "$ALARM_V1_INVOKE" "$ALARM_V1_PAYLOAD" "$METRIC_QUERIES"
               chown cloud_user:cloud_user "$ALARM_BEFORE" "$ALARM_READY" "$ALARM_ZERO"
             }
 

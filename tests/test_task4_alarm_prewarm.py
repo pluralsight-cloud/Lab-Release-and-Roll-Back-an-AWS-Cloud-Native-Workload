@@ -13,29 +13,129 @@ import yaml
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = REPOSITORY_ROOT / "infrastructure/template.yaml"
 
+ALARM_METRICS = [
+    {
+        "Id": "errors",
+        "MetricStat": {
+            "Metric": {
+                "Dimensions": [
+                    {"Name": "Resource", "Value": "globomantics-orders:prod"}
+                ],
+                "MetricName": "Errors",
+                "Namespace": "AWS/Lambda",
+            },
+            "Period": 60,
+            "Stat": "Sum",
+        },
+        "ReturnData": False,
+    },
+    {
+        "Id": "invocations",
+        "MetricStat": {
+            "Metric": {
+                "Dimensions": [
+                    {"Name": "Resource", "Value": "globomantics-orders:prod"}
+                ],
+                "MetricName": "Invocations",
+                "Namespace": "AWS/Lambda",
+            },
+            "Period": 60,
+            "Stat": "Sum",
+        },
+        "ReturnData": False,
+    },
+    {
+        "Expression": "IF(invocations>0,FILL(errors,0))",
+        "Id": "health",
+        "ReturnData": True,
+    },
+]
+ALARM_TEMPLATE_METRICS = [
+    {
+        "Id": "errors",
+        "MetricStat": {
+            "Metric": {
+                "Dimensions": [
+                    {
+                        "Name": "Resource",
+                        "Value": {"Fn::Sub": "${OrdersFunction}:prod"},
+                    }
+                ],
+                "MetricName": "Errors",
+                "Namespace": "AWS/Lambda",
+            },
+            "Period": 60,
+            "Stat": "Sum",
+        },
+        "ReturnData": False,
+    },
+    {
+        "Id": "invocations",
+        "MetricStat": {
+            "Metric": {
+                "Dimensions": [
+                    {
+                        "Name": "Resource",
+                        "Value": {"Fn::Sub": "${OrdersFunction}:prod"},
+                    }
+                ],
+                "MetricName": "Invocations",
+                "Namespace": "AWS/Lambda",
+            },
+            "Period": 60,
+            "Stat": "Sum",
+        },
+        "ReturnData": False,
+    },
+    {
+        "Expression": "IF(invocations>0,FILL(errors,0))",
+        "Id": "health",
+        "ReturnData": True,
+    },
+]
+
 READY_ALARM = {
     "AlarmName": "globomantics-orders-errors",
     "ComparisonOperator": "GreaterThanThreshold",
     "DatapointsToAlarm": 1,
-    "Dimensions": [{"Name": "Resource", "Value": "globomantics-orders:prod"}],
     "EvaluationPeriods": 1,
-    "MetricName": "Errors",
-    "Namespace": "AWS/Lambda",
-    "Period": 60,
+    "Metrics": ALARM_METRICS,
     "StateValue": "OK",
-    "Statistic": "Sum",
     "Threshold": 0.0,
-    "TreatMissingData": "notBreaching",
+    "TreatMissingData": "breaching",
 }
-ZERO_DATA = {
-    "Datapoints": [
+HEALTHY_EXPRESSION_DATA = {
+    "MetricDataResults": [
         {
-            "SampleCount": 3.0,
-            "Sum": 0.0,
-            "Timestamp": "2026-08-26T12:01:00Z",
+            "Id": "health",
+            "Label": "Alias healthy traffic errors",
+            "StatusCode": "Complete",
+            "Timestamps": ["2026-08-26T12:01:00Z"],
+            "Values": [0.0],
         }
-    ],
-    "Label": "Errors",
+    ]
+}
+NO_TRAFFIC_EXPRESSION_DATA = {
+    "MetricDataResults": [
+        {
+            "Id": "health",
+            "Label": "Alias healthy traffic errors",
+            "StatusCode": "Complete",
+            "Timestamps": [],
+            "Values": [],
+        }
+    ]
+}
+ERROR_EXPRESSION_DATA = {
+    "MetricDataResults": [
+        {
+            "Id": "health",
+            "Label": "Alias healthy traffic errors",
+            "StatusCode": "Complete",
+            "Timestamps": ["2026-08-26T12:01:00Z"],
+            "Values": [1.0],
+        }
+    ]
 }
 
 
@@ -70,7 +170,13 @@ class Task4AlarmPrewarmTests(unittest.TestCase):
 
             fixtures_path = temporary_root / "fixtures.json"
             fixtures_path.write_text(
-                json.dumps({"alarm": alarm, "metric_data": metric_data}),
+                json.dumps(
+                    {
+                        "alarm": alarm,
+                        "metric_data": metric_data,
+                        "metric_queries": ALARM_METRICS,
+                    }
+                ),
                 encoding="utf-8",
             )
             calls_path = temporary_root / "calls.jsonl"
@@ -106,12 +212,15 @@ if args[:2] == ["lambda", "invoke"]:
 elif args[:2] == ["cloudwatch", "describe-alarms"]:
     require_pair("--alarm-names", "globomantics-orders-errors")
     print(json.dumps(fixtures["alarm"]))
-elif args[:2] == ["cloudwatch", "get-metric-statistics"]:
-    require_pair("--namespace", "AWS/Lambda")
-    require_pair("--metric-name", "Errors")
-    require_pair("--dimensions", "Name=Resource,Value=globomantics-orders:prod")
-    require_pair("--period", "60")
-    require_pair("--statistics", "Sum")
+elif args[:2] == ["cloudwatch", "get-metric-data"]:
+    try:
+        query_path = args[args.index("--metric-data-queries") + 1]
+    except (ValueError, IndexError):
+        raise SystemExit("missing metric data queries")
+    if not query_path.startswith("file://"):
+        raise SystemExit("metric data queries must use a file")
+    if json.load(open(query_path.removeprefix("file://"), encoding="utf-8")) != fixtures["metric_queries"]:
+        raise SystemExit("unexpected metric math query")
     require_pair("--output", "json")
     if "--start-time" not in args or "--end-time" not in args:
         raise SystemExit("metric request must use a bounded time window")
@@ -170,8 +279,24 @@ prewarm_alarm
             ]
             return result, state, calls
 
-    def test_prewarm_accepts_only_ok_alarm_with_real_zero_alias_datapoint(self):
-        result, state, calls = self.run_prewarm(READY_ALARM, ZERO_DATA)
+    def test_alarm_uses_alias_traffic_metric_math_contract(self):
+        alarm = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))["Resources"][
+            "OrdersErrorsAlarm"
+        ]["Properties"]
+
+        self.assertEqual(alarm["Metrics"], ALARM_TEMPLATE_METRICS)
+        self.assertEqual(alarm["TreatMissingData"], "breaching")
+        for removed_property in (
+            "Dimensions",
+            "MetricName",
+            "Namespace",
+            "Period",
+            "Statistic",
+        ):
+            self.assertNotIn(removed_property, alarm)
+
+    def test_prewarm_accepts_successful_alias_traffic_expression_at_zero(self):
+        result, state, calls = self.run_prewarm(READY_ALARM, HEALTHY_EXPRESSION_DATA)
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
@@ -179,21 +304,35 @@ prewarm_alarm
             {
                 "alarm-before.json": READY_ALARM,
                 "alarm-ready.json": READY_ALARM,
-                "alarm-zero-datapoints.json": ZERO_DATA,
+                "alarm-zero-datapoints.json": HEALTHY_EXPRESSION_DATA,
             },
         )
         self.assertTrue(
-            any(call[:2] == ["cloudwatch", "get-metric-statistics"] for call in calls)
+            any(call[:2] == ["cloudwatch", "get-metric-data"] for call in calls)
         )
 
-    def test_prewarm_rejects_ok_caused_only_by_missing_data(self):
+    def test_prewarm_rejects_missing_expression_value_when_no_traffic_exists(self):
         result, state, _ = self.run_prewarm(
             READY_ALARM,
-            {"Datapoints": [], "Label": "Errors"},
+            NO_TRAFFIC_EXPRESSION_DATA,
         )
 
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("alarm-zero-datapoints.json", state)
+        self.assertIn(
+            "Orders errors alarm did not reach OK with a real zero-error datapoint.",
+            result.stderr,
+        )
+
+    def test_prewarm_rejects_error_expression_value(self):
+        result, state, _ = self.run_prewarm(READY_ALARM, ERROR_EXPRESSION_DATA)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("alarm-zero-datapoints.json", state)
+        self.assertIn(
+            "Orders errors alarm did not reach OK with a real zero-error datapoint.",
+            result.stderr,
+        )
 
     def test_bootstrap_starts_alarm_before_lambda_publish_and_joins_before_policy_delete(
         self,
@@ -290,7 +429,7 @@ printf 'continued-after-failure\n'
             {
                 "lambda invoke",
                 "cloudwatch describe-alarms",
-                "cloudwatch get-metric-statistics",
+                "cloudwatch get-metric-data",
             },
         )
         self.assertNotIn("StateReasonData", prewarm_alarm)

@@ -124,7 +124,7 @@ class Task6ReleaseAssetTests(unittest.TestCase):
         self.assertTrue(
             {
                 "lambda:UpdateFunctionCode",
-                "cloudwatch:GetMetricStatistics",
+                "cloudwatch:GetMetricData",
                 "iam:DeleteRolePolicy",
             }.isdisjoint(actions),
             "bootstrap-only writes must not survive in the permanent policy",

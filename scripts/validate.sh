@@ -285,7 +285,7 @@ if any(
 bootstrap_statements = statement_map(workstation_policies["globomantics-orders-v2-bootstrap"])
 expected_bootstrap_actions = {
     "PublishOrdersV2DuringBootstrap": {"lambda:GetFunction", "lambda:UpdateFunctionCode"},
-    "VerifyOrdersAlarmDatapointDuringBootstrap": {"cloudwatch:GetMetricStatistics"},
+    "VerifyOrdersAlarmDatapointDuringBootstrap": {"cloudwatch:GetMetricData"},
     "RemoveOrdersV2BootstrapPermission": {"iam:DeleteRolePolicy"},
 }
 expected_bootstrap_actions = {
@@ -321,6 +321,61 @@ if "AlarmConfiguration" in deployment_group or "DEPLOYMENT_STOP_ON_ALARM" in dep
     "AutoRollbackConfiguration"
 ]["Events"]:
     raise SystemExit("CodeDeploy alarm wiring is forbidden")
+
+expected_alarm = {
+    "AlarmDescription": "Alarm when real prod-alias traffic records an error.",
+    "AlarmName": "globomantics-orders-errors",
+    "ComparisonOperator": "GreaterThanThreshold",
+    "DatapointsToAlarm": 1,
+    "EvaluationPeriods": 1,
+    "Metrics": [
+        {
+            "Id": "errors",
+            "MetricStat": {
+                "Metric": {
+                    "Dimensions": [
+                        {
+                            "Name": "Resource",
+                            "Value": {"Fn::Sub": "${OrdersFunction}:prod"},
+                        }
+                    ],
+                    "MetricName": "Errors",
+                    "Namespace": "AWS/Lambda",
+                },
+                "Period": 60,
+                "Stat": "Sum",
+            },
+            "ReturnData": False,
+        },
+        {
+            "Id": "invocations",
+            "MetricStat": {
+                "Metric": {
+                    "Dimensions": [
+                        {
+                            "Name": "Resource",
+                            "Value": {"Fn::Sub": "${OrdersFunction}:prod"},
+                        }
+                    ],
+                    "MetricName": "Invocations",
+                    "Namespace": "AWS/Lambda",
+                },
+                "Period": 60,
+                "Stat": "Sum",
+            },
+            "ReturnData": False,
+        },
+        {
+            "Expression": "IF(invocations>0,FILL(errors,0))",
+            "Id": "health",
+            "ReturnData": True,
+        },
+    ],
+    "Threshold": 0,
+    "TreatMissingData": "breaching",
+}
+if template["Resources"]["OrdersErrorsAlarm"]["Properties"] != expected_alarm:
+    raise SystemExit("alarm readiness contract is unexpected")
 
 placeholder = "TARGET_VERSION"
 allowed_placeholder_file = Path("assets/appspec/release-v2.json")

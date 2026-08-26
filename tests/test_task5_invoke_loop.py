@@ -259,17 +259,28 @@ raise SystemExit(response.get("exit_code", 0))
 
     def test_alarm_uses_the_prod_alias_resource_dimension(self):
         template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
-        dimensions = template["Resources"]["OrdersErrorsAlarm"]["Properties"][
-            "Dimensions"
+        metrics = template["Resources"]["OrdersErrorsAlarm"]["Properties"]["Metrics"]
+        dimensions = [
+            metric["MetricStat"]["Metric"]["Dimensions"]
+            for metric in metrics
+            if "MetricStat" in metric
         ]
 
         self.assertEqual(
             dimensions,
             [
-                {
-                    "Name": "Resource",
-                    "Value": {"Fn::Sub": "${OrdersFunction}:prod"},
-                }
+                [
+                    {
+                        "Name": "Resource",
+                        "Value": {"Fn::Sub": "${OrdersFunction}:prod"},
+                    }
+                ],
+                [
+                    {
+                        "Name": "Resource",
+                        "Value": {"Fn::Sub": "${OrdersFunction}:prod"},
+                    }
+                ],
             ],
             "direct version invokes must not contribute to the prod alias alarm",
         )
