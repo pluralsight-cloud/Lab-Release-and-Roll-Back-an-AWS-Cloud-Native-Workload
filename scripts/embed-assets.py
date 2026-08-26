@@ -9,6 +9,7 @@ from pathlib import Path
 ASSETS = {
     "APPSPEC_GZIP_BASE64": Path("assets/appspec/release-v2.json"),
     "INVOKE_LOOP_GZIP_BASE64": Path("assets/helpers/invoke-loop.py"),
+    "RECORD_OUTCOME_GZIP_BASE64": Path("assets/helpers/record-outcome.py"),
 }
 
 

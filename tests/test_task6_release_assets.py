@@ -10,6 +10,7 @@ import yaml
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 APPSPEC = REPOSITORY_ROOT / "assets/appspec/release-v2.json"
+RECORD_OUTCOME = REPOSITORY_ROOT / "assets/helpers/record-outcome.py"
 TEMPLATE = REPOSITORY_ROOT / "infrastructure/template.yaml"
 
 EXPECTED_APPSPEC = {
@@ -80,6 +81,86 @@ class Task6ReleaseAssetTests(unittest.TestCase):
         )
         self.assertIn(f"chown cloud_user:cloud_user {appspec_path}", script)
         self.assertIn(f"chmod 0644 {appspec_path}", script)
+
+    def test_template_embeds_and_installs_the_exact_outcome_helper(self):
+        self.assertTrue(RECORD_OUTCOME.is_file(), "missing recovery outcome helper")
+        script = user_data()
+        match = re.search(
+            r"(?m)^RECORD_OUTCOME_GZIP_BASE64='([A-Za-z0-9+/=]+)'$",
+            script,
+        )
+        self.assertIsNotNone(match, "workstation does not embed the outcome helper")
+        embedded = gzip.decompress(base64.b64decode(match.group(1)))
+        self.assertEqual(embedded, RECORD_OUTCOME.read_bytes())
+
+        helper_path = '"$LAB_ROOT/bin/record-outcome"'
+        self.assertIn(
+            'base64 -d <<<"$RECORD_OUTCOME_GZIP_BASE64" | gzip -d > '
+            + helper_path,
+            script,
+        )
+        self.assertIn(f"chown cloud_user:cloud_user {helper_path}", script)
+        self.assertIn(f"chmod 0755 {helper_path}", script)
+
+    def test_permanent_policy_preserves_exact_learner_access_without_bootstrap_writes(self):
+        template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
+        policies = template["Resources"]["LabWorkstationRole"]["Properties"][
+            "Policies"
+        ]
+        permanent = next(
+            policy
+            for policy in policies
+            if policy["PolicyName"] == "globomantics-orders-workstation-access"
+        )
+        statements = permanent["PolicyDocument"]["Statement"]
+        actions = {
+            action
+            for statement in statements
+            for action in (
+                statement["Action"]
+                if isinstance(statement["Action"], list)
+                else [statement["Action"]]
+            )
+        }
+
+        self.assertEqual(
+            actions,
+            {
+                "lambda:GetAlias",
+                "lambda:GetFunctionConfiguration",
+                "lambda:InvokeFunction",
+                "lambda:ListVersionsByFunction",
+                "codedeploy:CreateDeployment",
+                "codedeploy:GetApplication",
+                "codedeploy:GetDeployment",
+                "codedeploy:GetDeploymentConfig",
+                "codedeploy:GetDeploymentGroup",
+                "codedeploy:ListDeployments",
+                "codedeploy:RegisterApplicationRevision",
+                "codedeploy:StopDeployment",
+                "cloudwatch:DescribeAlarmHistory",
+                "cloudwatch:DescribeAlarms",
+                "cloudformation:SignalResource",
+            },
+        )
+        self.assertTrue(
+            {
+                "lambda:UpdateFunctionCode",
+                "cloudwatch:GetMetricStatistics",
+                "iam:DeleteRolePolicy",
+            }.isdisjoint(actions),
+            "bootstrap-only writes must not survive in the permanent policy",
+        )
+
+    def test_deployment_group_still_has_no_alarm_wiring(self):
+        template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
+        properties = template["Resources"]["OrdersDeploymentGroup"]["Properties"]
+
+        self.assertNotIn("AlarmConfiguration", properties)
+        self.assertNotIn(
+            "DEPLOYMENT_STOP_ON_ALARM",
+            properties["AutoRollbackConfiguration"]["Events"],
+        )
 
 
 if __name__ == "__main__":

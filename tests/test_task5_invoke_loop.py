@@ -269,6 +269,9 @@ raise SystemExit(response.get("exit_code", 0))
             helper.parent.mkdir(parents=True)
             helper_bytes = b"#!/usr/bin/env python3\nprint('exact helper bytes')\n"
             helper.write_bytes(helper_bytes)
+            outcome_helper = temporary_root / "assets/helpers/record-outcome.py"
+            outcome_helper_bytes = b"#!/usr/bin/env python3\nprint('exact outcome bytes')\n"
+            outcome_helper.write_bytes(outcome_helper_bytes)
             appspec = temporary_root / "assets/appspec/release-v2.json"
             appspec.parent.mkdir(parents=True)
             appspec_bytes = b'{"version": 0.0}\n'
@@ -277,7 +280,8 @@ raise SystemExit(response.get("exit_code", 0))
             template.parent.mkdir(parents=True)
             template.write_text(
                 "APPSPEC_GZIP_BASE64='stale'\n"
-                "INVOKE_LOOP_GZIP_BASE64='stale'\n",
+                "INVOKE_LOOP_GZIP_BASE64='stale'\n"
+                "RECORD_OUTCOME_GZIP_BASE64='stale'\n",
                 encoding="utf-8",
             )
 
@@ -306,6 +310,15 @@ raise SystemExit(response.get("exit_code", 0))
         self.assertIsNotNone(appspec_encoded)
         self.assertEqual(
             gzip.decompress(base64.b64decode(appspec_encoded.group(1))), appspec_bytes
+        )
+        outcome_encoded = re.search(
+            rb"RECORD_OUTCOME_GZIP_BASE64='([A-Za-z0-9+/=]+)'",
+            second,
+        )
+        self.assertIsNotNone(outcome_encoded)
+        self.assertEqual(
+            gzip.decompress(base64.b64decode(outcome_encoded.group(1))),
+            outcome_helper_bytes,
         )
 
     def test_alarm_uses_the_prod_alias_resource_dimension(self):

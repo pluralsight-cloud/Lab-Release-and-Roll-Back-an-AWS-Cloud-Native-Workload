@@ -307,9 +307,7 @@ Resources:
           Fn::Sub: |
             #!/bin/bash
             set -euo pipefail
-
             echo 'cloud_user:%password%' | chpasswd
-
             LAB_ROOT=/home/cloud_user/lab
             V2_ARCHIVE=$LAB_ROOT/assets/function/v2.zip
             V2_SHA256=2027a77a46868f6ac0a806d6cf0c5971fddcc72e8196009a507248fedcce72de
@@ -321,11 +319,11 @@ Resources:
             ALARM_POLL_SECONDS=5
             APPSPEC_GZIP_BASE64='H4sIAAAAAAAC/1WPXQuCMBSG7/0VY9cWdrs7CYsgNHTYRURMHTLQTc5mEOJ/by7y4+YM3uc572GDhxB+c9BCSUxQsA/8KUm5Vj2UXNvsYQOEBjctSqCy+qmXpfnt/Ill9NNxm+DwnhFyZW1RMUJm1V/EG6iOgxHuwFJgScxaV1E3qlAtk0aUeqfczVWBFcNGsGkbd6CqLTr2AFyafP4WPmwFyqDma07D9BzRVx6l2SWJ8eyO3vqd5tMbvS9EoqkONQEAAA=='
             INVOKE_LOOP_GZIP_BASE64='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'
+            RECORD_OUTCOME_GZIP_BASE64='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'
             STACK_NAME=${AWS::StackName}
             AWS_REGION=${AWS::Region}
             INSTANCE_ID=$(cat /var/lib/cloud/data/instance-id 2>/dev/null || hostname)
             BOOTSTRAP_STAGE=bootstrap-start
-
             classify_update_error() {
               case "$1" in
                 *'You must specify a region'*)
@@ -342,20 +340,15 @@ Resources:
                   ;;
               esac
             }
-
             verify_seed_state() {
-              ALIAS_STATE="$LAB_ROOT/state/prod-alias.json"
-              V1_INVOKE="$LAB_ROOT/state/v1-invoke.json"
-              V1_PAYLOAD="$LAB_ROOT/state/v1-payload.json"
-              V2_INVOKE="$LAB_ROOT/state/v2-invoke.json"
+              ALIAS_STATE="$LAB_ROOT/state/prod-alias.json"; V1_INVOKE="$LAB_ROOT/state/v1-invoke.json"
+              V1_PAYLOAD="$LAB_ROOT/state/v1-payload.json"; V2_INVOKE="$LAB_ROOT/state/v2-invoke.json"
               V2_PAYLOAD="$LAB_ROOT/state/v2-payload.json"
-
               aws lambda get-alias \
                 --function-name "$FUNCTION_NAME" \
                 --name prod \
                 --output json \
                 --no-cli-pager > "$ALIAS_STATE"
-
               aws lambda invoke \
                 --function-name "$FUNCTION_NAME" \
                 --qualifier 1 \
@@ -363,7 +356,6 @@ Resources:
                 --cli-binary-format raw-in-base64-out \
                 --no-cli-pager \
                 "$V1_PAYLOAD" > "$V1_INVOKE"
-
               aws lambda invoke \
                 --function-name "$FUNCTION_NAME" \
                 --qualifier 2 \
@@ -378,45 +370,19 @@ Resources:
                 "$V1_PAYLOAD" \
                 "$V2_INVOKE" \
                 "$V2_PAYLOAD" <<'PY'
-            import json
-            import sys
-
-            alias_state, v1_invoke, v1_payload, v2_invoke, v2_payload = (
-                json.load(open(path, encoding="utf-8"))
-                for path in sys.argv[1:]
+            import json, sys
+            alias, v1m, v1b, v2m, v2b = (json.load(open(p, encoding="utf-8")) for p in sys.argv[1:])
+            checks = (
+                alias.get("FunctionVersion") == "1", alias.get("RoutingConfig") in (None, {}),
+                v1m == {"StatusCode": 200, "ExecutedVersion": "1"},
+                v1b == {"order_id": "order-1001", "status": "confirmed", "version": "v1"},
+                v2m == {"StatusCode": 200, "FunctionError": "Unhandled", "ExecutedVersion": "2"},
+                v2b == {"errorType": "RuntimeError", "errorMessage": "Simulated v2 order-processing failure."},
             )
-
-            if alias_state.get("FunctionVersion") != "1":
-                raise SystemExit("prod alias is not pinned to version 1")
-            if alias_state.get("RoutingConfig") not in (None, {}):
-                raise SystemExit("prod alias has unexpected routing weight")
-
-            if v1_invoke.get("StatusCode") != 200:
-                raise SystemExit("direct v1 invoke did not return status 200")
-            if v1_invoke.get("FunctionError") is not None:
-                raise SystemExit("direct v1 invoke returned FunctionError")
-            if v1_invoke.get("ExecutedVersion") != "1":
-                raise SystemExit("direct v1 invoke did not execute version 1")
-            if v1_payload != {
-                "order_id": "order-1001",
-                "status": "confirmed",
-                "version": "v1",
-            }:
-                raise SystemExit("direct v1 invoke returned an unexpected payload")
-
-            if v2_invoke.get("StatusCode") != 200:
-                raise SystemExit("direct v2 invoke did not return status 200")
-            if v2_invoke.get("FunctionError") != "Unhandled":
-                raise SystemExit("direct v2 invoke did not return FunctionError")
-            if v2_invoke.get("ExecutedVersion") != "2":
-                raise SystemExit("direct v2 invoke did not execute version 2")
-            if v2_payload.get("errorType") != "RuntimeError":
-                raise SystemExit("direct v2 invoke returned an unexpected error type")
-            if v2_payload.get("errorMessage") != "Simulated v2 order-processing failure.":
-                raise SystemExit("direct v2 invoke returned an unexpected error message")
+            if not all(checks):
+                raise SystemExit("seed verification failed")
             PY
             }
-
             prewarm_alarm() {
               ALARM_QUERY='MetricAlarms[0].{AlarmName:AlarmName,ComparisonOperator:ComparisonOperator,DatapointsToAlarm:DatapointsToAlarm,Dimensions:Dimensions,EvaluationPeriods:EvaluationPeriods,MetricName:MetricName,Namespace:Namespace,Period:Period,StateValue:StateValue,Statistic:Statistic,Threshold:Threshold,TreatMissingData:TreatMissingData}'
               ALARM_BEFORE="$LAB_ROOT/state/alarm-before.json"
@@ -425,13 +391,11 @@ Resources:
               ALARM_V1_INVOKE=$(mktemp)
               ALARM_V1_PAYLOAD=$(mktemp)
               METRIC_DATA=$(mktemp)
-
               aws cloudwatch describe-alarms \
                 --alarm-names "$ALARM_NAME" \
                 --query "$ALARM_QUERY" \
                 --output json \
                 --no-cli-pager > "$ALARM_BEFORE"
-
               ALARM_READY_REACHED=false
               for attempt in $(seq 1 "$ALARM_MAX_ATTEMPTS"); do
                 aws lambda invoke \
@@ -555,14 +519,11 @@ Resources:
               "$LAB_ROOT/bin" \
               "$LAB_ROOT/output" \
               "$LAB_ROOT/state"
-
             base64 --decode > "$V2_ARCHIVE" <<'V2_ZIP_BASE64'
             UEsDBBQAAAAAAAAAIQB13Wo5sAAAALAAAAAIAAAAaW5kZXgucHlkZWYgbGFtYmRhX2hhbmRsZXIoZXZlbnQsIGNvbnRleHQpOgogICAgIiIiUmVwcmVzZW50IHRoZSBkZXRlcm1pbmlzdGljIGZhaWx1cmUgcGxhbnRlZCBpbiBvcmRlcnMgdmVyc2lvbiAyLiIiIgogICAgcmFpc2UgUnVudGltZUVycm9yKCJTaW11bGF0ZWQgdjIgb3JkZXItcHJvY2Vzc2luZyBmYWlsdXJlLiIpClBLAQIUAxQAAAAAAAAAIQB13Wo5sAAAALAAAAAIAAAAAAAAAAAAAACkgQAAAABpbmRleC5weVBLBQYAAAAAAQABADYAAADWAAAAAAA=
             V2_ZIP_BASE64
-
             echo "$V2_SHA256  $V2_ARCHIVE" | sha256sum --check --status
             chown cloud_user:cloud_user "$V2_ARCHIVE"
-
             BOOTSTRAP_STAGE=sts-credentials
             for attempt in $(seq 1 30); do
               if aws sts get-caller-identity >/dev/null 2>&1; then
@@ -571,20 +532,17 @@ Resources:
               sleep 2
             done
             aws sts get-caller-identity >/dev/null
-
             prewarm_alarm &
             ALARM_PID=$!
-
             BOOTSTRAP_STAGE=invoke-helper-install
             base64 -d <<<"$INVOKE_LOOP_GZIP_BASE64" | gzip -d > "$LAB_ROOT/bin/invoke-loop"
-            chown cloud_user:cloud_user "$LAB_ROOT/bin/invoke-loop"
-            chmod 755 "$LAB_ROOT/bin/invoke-loop"
-
+            chown cloud_user:cloud_user "$LAB_ROOT/bin/invoke-loop"; chmod 755 "$LAB_ROOT/bin/invoke-loop"
+            base64 -d <<<"$RECORD_OUTCOME_GZIP_BASE64" | gzip -d > "$LAB_ROOT/bin/record-outcome"
+            chown cloud_user:cloud_user "$LAB_ROOT/bin/record-outcome"; chmod 0755 "$LAB_ROOT/bin/record-outcome"
             BOOTSTRAP_STAGE=appspec-install
             base64 -d <<<"$APPSPEC_GZIP_BASE64" | gzip -d > "$LAB_ROOT/appspec/release-v2.json"
             chown cloud_user:cloud_user "$LAB_ROOT/appspec/release-v2.json"
             chmod 0644 "$LAB_ROOT/appspec/release-v2.json"
-
             BOOTSTRAP_STAGE=lambda-update-readiness
             UPDATE_PERMISSION_READY=false
             UPDATE_ERROR=$(mktemp)
@@ -606,7 +564,6 @@ Resources:
               exit 1
             fi
             rm -f "$UPDATE_ERROR"
-
             BOOTSTRAP_STAGE=lambda-publish
             V2_VERSION=$(aws lambda update-function-code \
               --function-name "$FUNCTION_NAME" \
