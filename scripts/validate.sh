@@ -268,7 +268,9 @@ expected_permanent_resources = {
         {"Fn::Sub": "arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:globomantics-orders-app/globomantics-orders-dg"},
         {"Fn::Sub": "arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentconfig:CodeDeployDefault.LambdaCanary10Percent5Minutes"},
     ],
-    "StopOrdersDeployment": "*",
+    "StopOrdersDeployment": {
+        "Fn::Sub": "arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:globomantics-orders-app/globomantics-orders-dg"
+    },
     "InspectOrdersAlarm": "*",
     "SignalWorkstationReadiness": {
         "Fn::Sub": "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*"

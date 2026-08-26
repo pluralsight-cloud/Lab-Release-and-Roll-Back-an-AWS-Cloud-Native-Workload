@@ -156,7 +156,8 @@ Resources:
               - Sid: StopOrdersDeployment
                 Effect: Allow
                 Action: codedeploy:StopDeployment
-                Resource: '*'
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:globomantics-orders-app/globomantics-orders-dg
               - Sid: InspectOrdersAlarm
                 Effect: Allow
                 Action:

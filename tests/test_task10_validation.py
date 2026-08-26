@@ -146,6 +146,27 @@ class Task10ValidationTests(unittest.TestCase):
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn("IAM boundary violation: iam:PassRole is forbidden", rejected.stderr)
 
+    def test_candidate_gate_rejects_wildcard_stop_deployment_scope(self):
+        self.assert_clean_candidate_passes()
+        self.replace_template(
+            "              - Sid: StopOrdersDeployment\n"
+            "                Effect: Allow\n"
+            "                Action: codedeploy:StopDeployment\n"
+            "                Resource:\n"
+            "                  Fn::Sub: arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:globomantics-orders-app/globomantics-orders-dg\n",
+            "              - Sid: StopOrdersDeployment\n"
+            "                Effect: Allow\n"
+            "                Action: codedeploy:StopDeployment\n"
+            "                Resource: '*'\n",
+        )
+
+        rejected = self.run_gate()
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn(
+            "IAM boundary violation: permanent learner resources are not least-scope",
+            rejected.stderr,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
