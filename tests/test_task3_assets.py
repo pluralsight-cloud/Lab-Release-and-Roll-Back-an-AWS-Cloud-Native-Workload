@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import importlib.util
 import json
@@ -71,7 +70,7 @@ class Task3AssetTests(unittest.TestCase):
             self.assertEqual(archive_entry.date_time, (1980, 1, 1, 0, 0, 0))
             self.assertEqual(archive.read("index.py"), FUNCTION_SOURCE.read_bytes())
 
-    def test_template_bootstraps_v2_after_the_v1_alias_without_egress(self):
+    def test_template_bootstraps_v2_after_the_v1_alias_using_the_pinned_archive(self):
         template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
         resources = template["Resources"]
         workstation = resources["LabWorkstation"]
@@ -138,10 +137,9 @@ class Task3AssetTests(unittest.TestCase):
         self.assertNotIn("cloudwatch:GetMetricStatistics", learner_actions)
         self.assertIn("cloudformation:SignalResource", learner_actions)
 
-        archive_base64 = base64.b64encode(FUNCTION_ARCHIVE.read_bytes()).decode("ascii")
         archive_sha256 = hashlib.sha256(FUNCTION_ARCHIVE.read_bytes()).hexdigest()
-        self.assertIn(archive_base64, user_data)
         self.assertIn(archive_sha256, user_data)
+        self.assertIn("assets/function/v2.zip", user_data)
         self.assertIn("LAB_ROOT=/home/cloud_user/lab", user_data)
         self.assertIn("V2_ARCHIVE=$LAB_ROOT/assets/function/v2.zip", user_data)
         self.assertIn("update-function-code", user_data)

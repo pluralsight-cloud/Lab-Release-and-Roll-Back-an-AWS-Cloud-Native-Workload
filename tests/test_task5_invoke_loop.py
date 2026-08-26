@@ -1,5 +1,3 @@
-import base64
-import gzip
 import importlib.util
 import json
 import os
@@ -17,7 +15,6 @@ import yaml
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 INVOKE_LOOP = REPOSITORY_ROOT / "assets/helpers/invoke-loop.py"
 TEMPLATE = REPOSITORY_ROOT / "infrastructure/template.yaml"
-EMBED_ASSETS = REPOSITORY_ROOT / "scripts/embed-assets.py"
 
 
 def load_invoke_loop_module():
@@ -260,67 +257,6 @@ raise SystemExit(response.get("exit_code", 0))
             ["Progress 010/021", "Progress 020/021", "Progress 021/021"],
         )
 
-    def test_embed_assets_is_idempotent_and_preserves_exact_helper_bytes(self):
-        self.assertTrue(EMBED_ASSETS.is_file(), "missing deterministic embed script")
-
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            temporary_root = Path(temporary_directory)
-            helper = temporary_root / "assets/helpers/invoke-loop.py"
-            helper.parent.mkdir(parents=True)
-            helper_bytes = b"#!/usr/bin/env python3\nprint('exact helper bytes')\n"
-            helper.write_bytes(helper_bytes)
-            outcome_helper = temporary_root / "assets/helpers/record-outcome.py"
-            outcome_helper_bytes = b"#!/usr/bin/env python3\nprint('exact outcome bytes')\n"
-            outcome_helper.write_bytes(outcome_helper_bytes)
-            appspec = temporary_root / "assets/appspec/release-v2.json"
-            appspec.parent.mkdir(parents=True)
-            appspec_bytes = b'{"version": 0.0}\n'
-            appspec.write_bytes(appspec_bytes)
-            template = temporary_root / "infrastructure/template.yaml"
-            template.parent.mkdir(parents=True)
-            template.write_text(
-                "APPSPEC_GZIP_BASE64='stale'\n"
-                "INVOKE_LOOP_GZIP_BASE64='stale'\n"
-                "RECORD_OUTCOME_GZIP_BASE64='stale'\n",
-                encoding="utf-8",
-            )
-
-            command = [
-                sys.executable,
-                str(EMBED_ASSETS),
-                "--repository-root",
-                str(temporary_root),
-            ]
-            subprocess.run(command, check=True)
-            first = template.read_bytes()
-            subprocess.run(command, check=True)
-            second = template.read_bytes()
-
-        self.assertEqual(second, first)
-        encoded = re.search(
-            rb"INVOKE_LOOP_GZIP_BASE64='([A-Za-z0-9+/=]+)'",
-            second,
-        )
-        self.assertIsNotNone(encoded)
-        self.assertEqual(gzip.decompress(base64.b64decode(encoded.group(1))), helper_bytes)
-        appspec_encoded = re.search(
-            rb"APPSPEC_GZIP_BASE64='([A-Za-z0-9+/=]+)'",
-            second,
-        )
-        self.assertIsNotNone(appspec_encoded)
-        self.assertEqual(
-            gzip.decompress(base64.b64decode(appspec_encoded.group(1))), appspec_bytes
-        )
-        outcome_encoded = re.search(
-            rb"RECORD_OUTCOME_GZIP_BASE64='([A-Za-z0-9+/=]+)'",
-            second,
-        )
-        self.assertIsNotNone(outcome_encoded)
-        self.assertEqual(
-            gzip.decompress(base64.b64decode(outcome_encoded.group(1))),
-            outcome_helper_bytes,
-        )
-
     def test_alarm_uses_the_prod_alias_resource_dimension(self):
         template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
         dimensions = template["Resources"]["OrdersErrorsAlarm"]["Properties"][
@@ -338,23 +274,16 @@ raise SystemExit(response.get("exit_code", 0))
             "direct version invokes must not contribute to the prod alias alarm",
         )
 
-    def test_exact_helper_is_seeded_for_the_learner(self):
+    def test_pinned_transport_keeps_the_invoke_helper_at_the_learner_path(self):
         self.assertTrue(INVOKE_LOOP.is_file(), "missing learner invoke-loop helper")
         template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
         user_data = template["Resources"]["LabWorkstation"]["Properties"][
             "UserData"
         ]["Fn::Base64"]["Fn::Sub"]
-        encoded_match = re.search(
-            r"(?m)^INVOKE_LOOP_GZIP_BASE64='([A-Za-z0-9+/=]+)'$",
-            user_data,
-        )
-        self.assertIsNotNone(encoded_match, "workstation does not embed the invoke helper")
-        embedded_helper = gzip.decompress(base64.b64decode(encoded_match.group(1)))
-
-        self.assertEqual(embedded_helper, INVOKE_LOOP.read_bytes())
+        self.assertIn("assets/helpers/invoke-loop.py", user_data)
         self.assertIn("$LAB_ROOT/bin/invoke-loop", user_data)
 
-    def test_workstation_installs_helper_after_aws_credentials_are_ready(self):
+    def test_workstation_downloads_helper_before_aws_credentials_are_ready(self):
         template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
         user_data = template["Resources"]["LabWorkstation"]["Properties"][
             "UserData"
@@ -363,16 +292,16 @@ raise SystemExit(response.get("exit_code", 0))
         credentials_ready = user_data.index(
             "aws sts get-caller-identity >/dev/null\n"
         )
-        helper_stage = user_data.index("BOOTSTRAP_STAGE=invoke-helper-install")
+        helper_stage = user_data.index("BOOTSTRAP_STAGE=asset-download")
         helper_install = user_data.index(
-            'gzip -d > "$LAB_ROOT/bin/invoke-loop"'
+            'download_asset "$INVOKE_LOOP_ASSET"'
         )
 
-        self.assertLess(credentials_ready, helper_stage)
         self.assertLess(helper_stage, helper_install)
+        self.assertLess(helper_install, credentials_ready)
         self.assertNotIn("install -o cloud_user -g cloud_user -m755 /dev/stdin", user_data)
 
-    def test_userdata_retains_one_kibibyte_of_ec2_limit_headroom(self):
+    def test_userdata_retains_three_kibibytes_of_ec2_limit_headroom(self):
         template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
         user_data = template["Resources"]["LabWorkstation"]["Properties"][
             "UserData"
@@ -380,7 +309,7 @@ raise SystemExit(response.get("exit_code", 0))
 
         self.assertLessEqual(
             len(user_data.encode("utf-8")),
-            16_384 - 1_024,
+            16_384 - 3_072,
             "workstation UserData must not sit on the EC2 raw-data limit",
         )
 

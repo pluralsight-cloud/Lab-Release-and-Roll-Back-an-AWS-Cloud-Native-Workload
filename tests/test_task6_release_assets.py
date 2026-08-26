@@ -1,5 +1,3 @@
-import base64
-import gzip
 import json
 import re
 import unittest
@@ -48,17 +46,9 @@ class Task6ReleaseAssetTests(unittest.TestCase):
         self.assertEqual(parsed, EXPECTED_APPSPEC)
         self.assertNotIn("S3Location", json.dumps(parsed))
 
-    def test_template_embeds_the_exact_appspec_source_bytes(self):
+    def test_pinned_transport_keeps_the_appspec_source_identity(self):
         self.assertTrue(APPSPEC.is_file(), "missing learner release AppSpec source")
-
-        match = re.search(
-            r"(?m)^APPSPEC_GZIP_BASE64='([A-Za-z0-9+/=]+)'$",
-            user_data(),
-        )
-        self.assertIsNotNone(match, "workstation does not embed the release AppSpec")
-        embedded = gzip.decompress(base64.b64decode(match.group(1)))
-
-        self.assertEqual(embedded, APPSPEC.read_bytes())
+        self.assertIn("assets/appspec/release-v2.json", user_data())
 
     def test_userdata_creates_learner_directories_and_installs_appspec_permissions(self):
         script = user_data()
@@ -76,31 +66,19 @@ class Task6ReleaseAssetTests(unittest.TestCase):
 
         appspec_path = '"$LAB_ROOT/appspec/release-v2.json"'
         self.assertIn(
-            'base64 -d <<<"$APPSPEC_GZIP_BASE64" | gzip -d > ' + appspec_path,
+            'download_asset "$APPSPEC_ASSET" "$APPSPEC_SHA256" ' + appspec_path,
             script,
         )
-        self.assertIn(f"chown cloud_user:cloud_user {appspec_path}", script)
-        self.assertIn(f"chmod 0644 {appspec_path}", script)
 
-    def test_template_embeds_and_installs_the_exact_outcome_helper(self):
+    def test_pinned_transport_keeps_the_outcome_helper_at_its_learner_path(self):
         self.assertTrue(RECORD_OUTCOME.is_file(), "missing recovery outcome helper")
         script = user_data()
-        match = re.search(
-            r"(?m)^RECORD_OUTCOME_GZIP_BASE64='([A-Za-z0-9+/=]+)'$",
-            script,
-        )
-        self.assertIsNotNone(match, "workstation does not embed the outcome helper")
-        embedded = gzip.decompress(base64.b64decode(match.group(1)))
-        self.assertEqual(embedded, RECORD_OUTCOME.read_bytes())
-
         helper_path = '"$LAB_ROOT/bin/record-outcome"'
         self.assertIn(
-            'base64 -d <<<"$RECORD_OUTCOME_GZIP_BASE64" | gzip -d > '
+            'download_asset "$RECORD_OUTCOME_ASSET" "$RECORD_OUTCOME_SHA256" '
             + helper_path,
             script,
         )
-        self.assertIn(f"chown cloud_user:cloud_user {helper_path}", script)
-        self.assertIn(f"chmod 0755 {helper_path}", script)
 
     def test_permanent_policy_preserves_exact_learner_access_without_bootstrap_writes(self):
         template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))

@@ -56,8 +56,8 @@ HISTORY = {
 }
 
 
-def load_record_outcome_module():
-    spec = importlib.util.spec_from_file_location("record_outcome", RECORD_OUTCOME)
+def load_record_outcome_module(helper_path=RECORD_OUTCOME):
+    spec = importlib.util.spec_from_file_location("record_outcome", helper_path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
