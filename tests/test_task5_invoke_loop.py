@@ -188,24 +188,57 @@ raise SystemExit(response.get("exit_code", 0))
         self.assertIn("unexpected v1 payload", result.stderr.lower())
 
     def test_unexpected_v2_error_payload_fails_after_recording_evidence(self):
-        unexpected_v2 = {
+        for payload in (
+            {
+                "errorMessage": "A different failure.",
+                "errorType": "RuntimeError",
+            },
+            {
+                "errorMessage": "Simulated v2 order-processing failure.",
+                "errorType": "ValueError",
+            },
+        ):
+            with self.subTest(payload=payload):
+                unexpected_v2 = {
+                    "metadata": {
+                        "StatusCode": 200,
+                        "FunctionError": "Unhandled",
+                        "ExecutedVersion": "2",
+                    },
+                    "payload": payload,
+                }
+
+                result, evidence, calls = self.run_loop([unexpected_v2])
+
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(calls, 1)
+                self.assertEqual(evidence[0]["payload"], payload)
+                self.assertIn("unexpected v2 error payload", result.stderr.lower())
+
+    def test_complete_aws_v2_error_payload_is_accepted_by_semantic_fields(self):
+        complete_aws_v2 = {
             "metadata": {
                 "StatusCode": 200,
                 "FunctionError": "Unhandled",
                 "ExecutedVersion": "2",
             },
             "payload": {
-                "errorMessage": "A different failure.",
+                "errorMessage": "Simulated v2 order-processing failure.",
                 "errorType": "RuntimeError",
+                "requestId": "4c39090c-7304-4a5d-8f6d-c8701fbef66d",
+                "stackTrace": [
+                    "  File \"/var/task/index.py\", line 6, in handler\n"
+                    "    raise RuntimeError(\"Simulated v2 order-processing failure.\")\n"
+                ],
             },
         }
 
-        result, evidence, calls = self.run_loop([unexpected_v2])
+        result, evidence, calls = self.run_loop([complete_aws_v2])
 
-        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls, 1)
-        self.assertEqual(evidence[0]["payload"], unexpected_v2["payload"])
-        self.assertIn("unexpected v2 error payload", result.stderr.lower())
+        self.assertEqual(evidence[0]["payload"], complete_aws_v2["payload"])
+        self.assertNotIn("unexpected v2 error payload", result.stderr.lower())
 
     def test_transport_failure_stops_immediately_and_is_distinct_from_function_error(self):
         transport_failure = {

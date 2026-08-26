@@ -134,7 +134,10 @@ def main():
                     file=sys.stderr,
                 )
                 unexpected = True
-            if version == "2" and payload != EXPECTED_V2_ERROR:
+            if version == "2" and any(
+                payload.get(field) != expected
+                for field, expected in EXPECTED_V2_ERROR.items()
+            ):
                 print(
                     f"Unexpected v2 error payload for invocation {invocation}.",
                     file=sys.stderr,
