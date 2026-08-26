@@ -1,0 +1,16 @@
+{
+  "version": 0.0,
+  "Resources": [
+    {
+      "OrdersFunction": {
+        "Type": "AWS::Lambda::Function",
+        "Properties": {
+          "Name": "globomantics-orders",
+          "Alias": "prod",
+          "CurrentVersion": "1",
+          "TargetVersion": "TARGET_VERSION"
+        }
+      }
+    }
+  ]
+}
