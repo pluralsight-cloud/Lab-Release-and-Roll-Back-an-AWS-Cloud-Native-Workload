@@ -296,7 +296,7 @@ Resources:
           Id: health
           ReturnData: true
       Threshold: 0
-      TreatMissingData: breaching
+      TreatMissingData: notBreaching
 
   LabWorkstation:
     Type: AWS::EC2::Instance
@@ -529,7 +529,7 @@ Resources:
                 ],
                 StateValue="OK",
                 Threshold=0.0,
-                TreatMissingData="breaching",
+                TreatMissingData="notBreaching",
             )
             if alarm != expected:
                 raise SystemExit("orders errors alarm configuration is unexpected")

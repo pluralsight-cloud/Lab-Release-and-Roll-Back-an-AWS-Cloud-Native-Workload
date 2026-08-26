@@ -102,7 +102,7 @@ READY_ALARM = {
     "Metrics": ALARM_METRICS,
     "StateValue": "OK",
     "Threshold": 0.0,
-    "TreatMissingData": "breaching",
+    "TreatMissingData": "notBreaching",
 }
 HEALTHY_EXPRESSION_DATA = {
     "MetricDataResults": [
@@ -285,7 +285,7 @@ prewarm_alarm
         ]["Properties"]
 
         self.assertEqual(alarm["Metrics"], ALARM_TEMPLATE_METRICS)
-        self.assertEqual(alarm["TreatMissingData"], "breaching")
+        self.assertEqual(alarm["TreatMissingData"], "notBreaching")
         for removed_property in (
             "Dimensions",
             "MetricName",
@@ -311,12 +311,14 @@ prewarm_alarm
             any(call[:2] == ["cloudwatch", "get-metric-data"] for call in calls)
         )
 
-    def test_prewarm_rejects_missing_expression_value_when_no_traffic_exists(self):
+    def test_prewarm_rejects_missing_expression_value_even_when_sparse_alarm_is_ok(self):
         result, state, _ = self.run_prewarm(
             READY_ALARM,
             NO_TRAFFIC_EXPRESSION_DATA,
         )
 
+        self.assertEqual(READY_ALARM["StateValue"], "OK")
+        self.assertEqual(READY_ALARM["TreatMissingData"], "notBreaching")
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("alarm-zero-datapoints.json", state)
         self.assertIn(

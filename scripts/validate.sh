@@ -372,7 +372,7 @@ expected_alarm = {
         },
     ],
     "Threshold": 0,
-    "TreatMissingData": "breaching",
+    "TreatMissingData": "notBreaching",
 }
 if template["Resources"]["OrdersErrorsAlarm"]["Properties"] != expected_alarm:
     raise SystemExit("alarm readiness contract is unexpected")
