@@ -335,6 +335,10 @@ expected_alarm = {
                 "Metric": {
                     "Dimensions": [
                         {
+                            "Name": "FunctionName",
+                            "Value": {"Ref": "OrdersFunction"},
+                        },
+                        {
                             "Name": "Resource",
                             "Value": {"Fn::Sub": "${OrdersFunction}:prod"},
                         }
@@ -352,6 +356,10 @@ expected_alarm = {
             "MetricStat": {
                 "Metric": {
                     "Dimensions": [
+                        {
+                            "Name": "FunctionName",
+                            "Value": {"Ref": "OrdersFunction"},
+                        },
                         {
                             "Name": "Resource",
                             "Value": {"Fn::Sub": "${OrdersFunction}:prod"},

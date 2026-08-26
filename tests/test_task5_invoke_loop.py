@@ -257,7 +257,7 @@ raise SystemExit(response.get("exit_code", 0))
             ["Progress 010/021", "Progress 020/021", "Progress 021/021"],
         )
 
-    def test_alarm_uses_the_prod_alias_resource_dimension(self):
+    def test_alarm_uses_the_complete_prod_alias_dimensions(self):
         template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
         metrics = template["Resources"]["OrdersErrorsAlarm"]["Properties"]["Metrics"]
         dimensions = [
@@ -271,11 +271,19 @@ raise SystemExit(response.get("exit_code", 0))
             [
                 [
                     {
+                        "Name": "FunctionName",
+                        "Value": {"Ref": "OrdersFunction"},
+                    },
+                    {
                         "Name": "Resource",
                         "Value": {"Fn::Sub": "${OrdersFunction}:prod"},
                     }
                 ],
                 [
+                    {
+                        "Name": "FunctionName",
+                        "Value": {"Ref": "OrdersFunction"},
+                    },
                     {
                         "Name": "Resource",
                         "Value": {"Fn::Sub": "${OrdersFunction}:prod"},

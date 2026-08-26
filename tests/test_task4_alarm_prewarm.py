@@ -19,7 +19,8 @@ ALARM_METRICS = [
         "MetricStat": {
             "Metric": {
                 "Dimensions": [
-                    {"Name": "Resource", "Value": "globomantics-orders:prod"}
+                    {"Name": "FunctionName", "Value": "globomantics-orders"},
+                    {"Name": "Resource", "Value": "globomantics-orders:prod"},
                 ],
                 "MetricName": "Errors",
                 "Namespace": "AWS/Lambda",
@@ -34,7 +35,8 @@ ALARM_METRICS = [
         "MetricStat": {
             "Metric": {
                 "Dimensions": [
-                    {"Name": "Resource", "Value": "globomantics-orders:prod"}
+                    {"Name": "FunctionName", "Value": "globomantics-orders"},
+                    {"Name": "Resource", "Value": "globomantics-orders:prod"},
                 ],
                 "MetricName": "Invocations",
                 "Namespace": "AWS/Lambda",
@@ -57,6 +59,10 @@ ALARM_TEMPLATE_METRICS = [
             "Metric": {
                 "Dimensions": [
                     {
+                        "Name": "FunctionName",
+                        "Value": {"Ref": "OrdersFunction"},
+                    },
+                    {
                         "Name": "Resource",
                         "Value": {"Fn::Sub": "${OrdersFunction}:prod"},
                     }
@@ -74,6 +80,10 @@ ALARM_TEMPLATE_METRICS = [
         "MetricStat": {
             "Metric": {
                 "Dimensions": [
+                    {
+                        "Name": "FunctionName",
+                        "Value": {"Ref": "OrdersFunction"},
+                    },
                     {
                         "Name": "Resource",
                         "Value": {"Fn::Sub": "${OrdersFunction}:prod"},

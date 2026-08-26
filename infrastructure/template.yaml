@@ -272,6 +272,9 @@ Resources:
           MetricStat:
             Metric:
               Dimensions:
+                - Name: FunctionName
+                  Value:
+                    Ref: OrdersFunction
                 - Name: Resource
                   Value:
                     Fn::Sub: ${OrdersFunction}:prod
@@ -284,6 +287,9 @@ Resources:
           MetricStat:
             Metric:
               Dimensions:
+                - Name: FunctionName
+                  Value:
+                    Ref: OrdersFunction
                 - Name: Resource
                   Value:
                     Fn::Sub: ${OrdersFunction}:prod
@@ -422,7 +428,10 @@ Resources:
             import json
             import sys
 
-            dimension = [dict(Name="Resource", Value=f"{sys.argv[1]}:prod")]
+            dimension = [
+                dict(Name="FunctionName", Value=sys.argv[1]),
+                dict(Name="Resource", Value=f"{sys.argv[1]}:prod"),
+            ]
             metric_stat = lambda name: dict(
                 Metric=dict(Namespace="AWS/Lambda", MetricName=name, Dimensions=dimension),
                 Period=60,
@@ -503,7 +512,10 @@ Resources:
                         Id="errors",
                         MetricStat=dict(
                             Metric=dict(
-                                Dimensions=[dict(Name="Resource", Value="globomantics-orders:prod")],
+                                Dimensions=[
+                                    dict(Name="FunctionName", Value="globomantics-orders"),
+                                    dict(Name="Resource", Value="globomantics-orders:prod"),
+                                ],
                                 MetricName="Errors",
                                 Namespace="AWS/Lambda",
                             ),
@@ -516,7 +528,10 @@ Resources:
                         Id="invocations",
                         MetricStat=dict(
                             Metric=dict(
-                                Dimensions=[dict(Name="Resource", Value="globomantics-orders:prod")],
+                                Dimensions=[
+                                    dict(Name="FunctionName", Value="globomantics-orders"),
+                                    dict(Name="Resource", Value="globomantics-orders:prod"),
+                                ],
                                 MetricName="Invocations",
                                 Namespace="AWS/Lambda",
                             ),
