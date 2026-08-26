@@ -57,36 +57,40 @@ lab_root = assignments.get("LAB_ROOT")
 if lab_root != "/home/cloud_user/lab":
     raise SystemExit("required learner root is missing or changed")
 assets = (
-    ("assets/function/v2.zip", "V2_ASSET", "V2_SHA256", "/home/cloud_user/lab/assets/function/v2.zip"),
-    ("assets/appspec/release-v2.json", "APPSPEC_ASSET", "APPSPEC_SHA256", "/home/cloud_user/lab/appspec/release-v2.json"),
-    ("assets/helpers/invoke-loop.py", "INVOKE_LOOP_ASSET", "INVOKE_LOOP_SHA256", "/home/cloud_user/lab/bin/invoke-loop"),
-    ("assets/helpers/record-outcome.py", "RECORD_OUTCOME_ASSET", "RECORD_OUTCOME_SHA256", "/home/cloud_user/lab/bin/record-outcome"),
+    ("V2", "assets/function/v2.zip", "V2_ASSET", "V2_SHA256", "$V2_ARCHIVE", "0644"),
+    ("APPSPEC", "assets/appspec/release-v2.json", "APPSPEC_ASSET", "APPSPEC_SHA256", "$LAB_ROOT/appspec/release-v2.json", "0644"),
+    ("INVOKE_LOOP", "assets/helpers/invoke-loop.py", "INVOKE_LOOP_ASSET", "INVOKE_LOOP_SHA256", "$LAB_ROOT/bin/invoke-loop", "0755"),
+    ("RECORD_OUTCOME", "assets/helpers/record-outcome.py", "RECORD_OUTCOME_ASSET", "RECORD_OUTCOME_SHA256", "$LAB_ROOT/bin/record-outcome", "0755"),
 )
-for asset_path, asset_variable, sha_variable, learner_path in assets:
+if assignments.get("V2_ARCHIVE") != "$LAB_ROOT/assets/function/v2.zip":
+    raise SystemExit("pinned transport mismatch: V2 destination")
+for name, asset_path, asset_variable, sha_variable, destination, mode in assets:
     if assignments.get(asset_variable) != asset_path:
-        raise SystemExit(f"pinned asset path mismatch: {asset_variable}")
+        raise SystemExit(f"pinned transport mismatch: {name} source path")
     actual_sha = hashlib.sha256((repository_root / asset_path).read_bytes()).hexdigest()
     if assignments.get(sha_variable) != actual_sha:
         raise SystemExit(f"pinned asset mismatch: {asset_path}")
-    learner_reference = "$LAB_ROOT" + learner_path.removeprefix(lab_root)
-    if learner_reference not in user_data:
-        raise SystemExit(f"required learner path missing: {learner_path}")
+    expected_call = f'download_asset "${asset_variable}" "${sha_variable}" "{destination}" {mode}'
+    if expected_call not in user_data:
+        raise SystemExit(f"pinned transport mismatch: {name}")
 
 asset_base_url = assignments.get("ASSET_BASE_URL", "")
-raw_url = re.fullmatch(
-    r"https://raw\.githubusercontent\.com/pluralsight-cloud/"
-    r"Lab-Release-and-Roll-Back-an-AWS-Cloud-Native-Workload/([0-9a-f]{40})",
-    asset_base_url,
+expected_asset_base_url = (
+    "https://raw.githubusercontent.com/pluralsight-cloud/"
+    "Lab-Release-and-Roll-Back-an-AWS-Cloud-Native-Workload/"
+    "b49e821a9871debed6cc1a7d98df0513f06a2199"
 )
-if raw_url is None:
-    raise SystemExit("pinned GitHub raw URL must use an immutable commit")
-pinned_commit = raw_url.group(1)
-if not re.fullmatch(r"[0-9a-f]{40}", pinned_commit):
-    raise SystemExit("pinned GitHub commit is not immutable")
-for asset_path, _, _, _ in assets:
-    expected_url = f"{asset_base_url}/{asset_path}"
-    if not expected_url.startswith(asset_base_url + "/assets/"):
-        raise SystemExit(f"pinned GitHub raw URL shape is invalid: {asset_path}")
+if asset_base_url != expected_asset_base_url:
+    raise SystemExit("pinned GitHub raw URL must match the canonical immutable commit")
+if '"$ASSET_BASE_URL/$asset_name"' not in user_data:
+    raise SystemExit("pinned GitHub raw URL is not used by download_asset")
+for required_install_step in (
+    'chown cloud_user:cloud_user "$temporary_file"',
+    'chmod "$file_mode" "$temporary_file"',
+    'mv -f "$temporary_file" "$destination"',
+):
+    if required_install_step not in user_data:
+        raise SystemExit("pinned transport install ownership or mode is missing")
 
 for embedded_asset in (
     "INVOKE_LOOP_GZIP_BASE64",
@@ -166,6 +170,116 @@ required_outputs = {
 missing_outputs = sorted(required_outputs - set(template.get("Outputs", {})))
 if missing_outputs:
     raise SystemExit("required outputs missing: " + ", ".join(missing_outputs))
+
+
+def action_set(statement):
+    actions = statement["Action"]
+    return {actions} if isinstance(actions, str) else set(actions)
+
+
+def statement_map(policy):
+    return {statement["Sid"]: statement for statement in policy["PolicyDocument"]["Statement"]}
+
+
+roles = template["Resources"]
+for logical_id, resource in roles.items():
+    if resource.get("Type") != "AWS::IAM::Role":
+        continue
+    for policy in resource.get("Properties", {}).get("Policies", []):
+        for statement in policy["PolicyDocument"].get("Statement", []):
+            if "iam:PassRole" in action_set(statement):
+                raise SystemExit("IAM boundary violation: iam:PassRole is forbidden")
+
+workstation_policies = {
+    policy["PolicyName"]: policy
+    for policy in roles["LabWorkstationRole"]["Properties"]["Policies"]
+}
+if set(workstation_policies) != {
+    "globomantics-orders-workstation-access",
+    "globomantics-orders-v2-bootstrap",
+}:
+    raise SystemExit("IAM boundary violation: unexpected workstation role policy")
+
+permanent_statements = statement_map(
+    workstation_policies["globomantics-orders-workstation-access"]
+)
+expected_permanent_actions = {
+    "InspectAndInvokeOrdersWorkload": {
+        "lambda:GetAlias",
+        "lambda:GetFunctionConfiguration",
+        "lambda:InvokeFunction",
+        "lambda:ListVersionsByFunction",
+    },
+    "OperateOrdersDeployment": {
+        "codedeploy:CreateDeployment",
+        "codedeploy:GetApplication",
+        "codedeploy:GetDeployment",
+        "codedeploy:GetDeploymentConfig",
+        "codedeploy:GetDeploymentGroup",
+        "codedeploy:ListDeployments",
+        "codedeploy:RegisterApplicationRevision",
+    },
+    "StopOrdersDeployment": {"codedeploy:StopDeployment"},
+    "InspectOrdersAlarm": {"cloudwatch:DescribeAlarmHistory", "cloudwatch:DescribeAlarms"},
+    "SignalWorkstationReadiness": {"cloudformation:SignalResource"},
+}
+if set(permanent_statements) != set(expected_permanent_actions) or any(
+    action_set(permanent_statements[sid]) != actions
+    for sid, actions in expected_permanent_actions.items()
+):
+    raise SystemExit("IAM boundary violation: permanent learner actions are not least-scope")
+
+expected_permanent_resources = {
+    "InspectAndInvokeOrdersWorkload": [
+        {"Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:globomantics-orders"},
+        {"Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:globomantics-orders:*"},
+    ],
+    "OperateOrdersDeployment": [
+        {"Fn::Sub": "arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:application:globomantics-orders-app"},
+        {"Fn::Sub": "arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:globomantics-orders-app/globomantics-orders-dg"},
+        {"Fn::Sub": "arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentconfig:CodeDeployDefault.LambdaCanary10Percent5Minutes"},
+    ],
+    "StopOrdersDeployment": "*",
+    "InspectOrdersAlarm": "*",
+    "SignalWorkstationReadiness": {
+        "Fn::Sub": "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*"
+    },
+}
+if any(
+    permanent_statements[sid].get("Resource") != resource
+    for sid, resource in expected_permanent_resources.items()
+):
+    raise SystemExit("IAM boundary violation: permanent learner resources are not least-scope")
+
+bootstrap_statements = statement_map(workstation_policies["globomantics-orders-v2-bootstrap"])
+expected_bootstrap_actions = {
+    "PublishOrdersV2DuringBootstrap": {"lambda:GetFunction", "lambda:UpdateFunctionCode"},
+    "VerifyOrdersAlarmDatapointDuringBootstrap": {"cloudwatch:GetMetricStatistics"},
+    "RemoveOrdersV2BootstrapPermission": {"iam:DeleteRolePolicy"},
+}
+if set(bootstrap_statements) != set(expected_bootstrap_actions) or any(
+    action_set(bootstrap_statements[sid]) != actions
+    for sid, actions in expected_bootstrap_actions.items()
+):
+    raise SystemExit("IAM boundary violation: bootstrap actions are not temporary and least-scope")
+if (
+    bootstrap_statements["PublishOrdersV2DuringBootstrap"]["Resource"]
+    != {"Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:globomantics-orders"}
+    or bootstrap_statements["VerifyOrdersAlarmDatapointDuringBootstrap"]["Resource"] != "*"
+    or bootstrap_statements["RemoveOrdersV2BootstrapPermission"]["Resource"]
+    != {"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/globomantics-orders-workstation-role"}
+):
+    raise SystemExit("IAM boundary violation: bootstrap resources are not least-scope")
+if (
+    assignments.get("ROLE_NAME") != "globomantics-orders-workstation-role"
+    or assignments.get("BOOTSTRAP_POLICY_NAME") != "globomantics-orders-v2-bootstrap"
+    or 'aws iam delete-role-policy' not in user_data
+    or '--role-name "$ROLE_NAME"' not in user_data
+    or '--policy-name "$BOOTSTRAP_POLICY_NAME"' not in user_data
+    or user_data.index('if ! wait "$ALARM_PID";')
+    > user_data.index('aws iam delete-role-policy')
+):
+    raise SystemExit("IAM boundary violation: bootstrap policy removal is not after readiness join")
 
 deployment_group = template["Resources"]["OrdersDeploymentGroup"]["Properties"]
 if "AlarmConfiguration" in deployment_group or "DEPLOYMENT_STOP_ON_ALARM" in deployment_group[
