@@ -92,6 +92,11 @@ for line in user_data.splitlines():
     actual_download_calls.append(parsed_call.groups())
 if actual_download_calls != expected_download_calls:
     raise SystemExit("pinned transport mismatch: ordered download calls")
+if (
+    len(re.findall(r"(?m)^\s*download_asset\(\)\s*\{", user_data)) != 1
+    or len(re.findall(r"\bdownload_asset\b", user_data)) != 5
+):
+    raise SystemExit("pinned transport mismatch: download_asset occurrences")
 
 asset_base_url = assignments.get("ASSET_BASE_URL", "")
 expected_asset_base_url = (

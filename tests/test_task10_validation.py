@@ -96,6 +96,18 @@ class Task10ValidationTests(unittest.TestCase):
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn("pinned transport mismatch: ordered download calls", rejected.stderr)
 
+    def test_candidate_gate_rejects_a_compound_download_call(self):
+        self.assert_clean_candidate_passes()
+        self.replace_template(
+            'download_asset "$V2_ASSET" "$V2_SHA256" "$V2_ARCHIVE" 0644\n',
+            'download_asset "$V2_ASSET" "$V2_SHA256" "$V2_ARCHIVE" 0644\n'
+            '            true && download_asset "$APPSPEC_ASSET" "$V2_SHA256" "$V2_ARCHIVE" 0644\n',
+        )
+
+        rejected = self.run_gate()
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("pinned transport mismatch: download_asset occurrences", rejected.stderr)
+
     def test_candidate_gate_rejects_broadened_iam_permissions(self):
         self.assert_clean_candidate_passes()
         self.replace_template(
