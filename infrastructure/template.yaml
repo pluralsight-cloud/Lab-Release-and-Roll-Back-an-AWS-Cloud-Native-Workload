@@ -374,10 +374,10 @@ Resources:
             alias, v1m, v1b, v2m, v2b = (json.load(open(p, encoding="utf-8")) for p in sys.argv[1:])
             checks = (
                 alias.get("FunctionVersion") == "1", alias.get("RoutingConfig") in (None, {}),
-                v1m == {"StatusCode": 200, "ExecutedVersion": "1"},
+                v1m.get("StatusCode") == 200 and v1m.get("FunctionError") is None and v1m.get("ExecutedVersion") == "1",
                 v1b == {"order_id": "order-1001", "status": "confirmed", "version": "v1"},
-                v2m == {"StatusCode": 200, "FunctionError": "Unhandled", "ExecutedVersion": "2"},
-                v2b == {"errorType": "RuntimeError", "errorMessage": "Simulated v2 order-processing failure."},
+                v2m.get("StatusCode") == 200 and v2m.get("FunctionError") == "Unhandled" and v2m.get("ExecutedVersion") == "2",
+                v2b.get("errorType") == "RuntimeError" and v2b.get("errorMessage") == "Simulated v2 order-processing failure.",
             )
             if not all(checks):
                 raise SystemExit("seed verification failed")

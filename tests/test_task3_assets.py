@@ -222,7 +222,11 @@ aws() {
       ;;
     *' lambda invoke '*' --qualifier 2 '*)
       output_file="${!#}"
-      printf '%s\n' '{"errorMessage":"Simulated v2 order-processing failure.","errorType":"RuntimeError"}' > "$output_file"
+      if [ "$FAKE_SCENARIO" = 'bad-v2-required-field' ]; then
+        printf '%s\n' '{"errorMessage":"Different failure.","errorType":"RuntimeError","requestId":"4e9ac3d2-a1d8-4d65-a477-7a3c4ef57c42","stackTrace":["  File \"/var/task/index.py\", line 3, in lambda_handler"]}' > "$output_file"
+      else
+        printf '%s\n' '{"errorMessage":"Simulated v2 order-processing failure.","errorType":"RuntimeError","requestId":"4e9ac3d2-a1d8-4d65-a477-7a3c4ef57c42","stackTrace":["  File \"/var/task/index.py\", line 3, in lambda_handler"]}' > "$output_file"
+      fi
       if [ "$FAKE_SCENARIO" = 'bad-v2-metadata' ]; then
         printf '%s\n' '{"StatusCode":200,"ExecutedVersion":"2"}'
       else
@@ -245,6 +249,7 @@ aws() {
             for scenario, expected_return_code in (
                 ("healthy", 0),
                 ("bad-v2-metadata", 1),
+                ("bad-v2-required-field", 1),
             ):
                 with self.subTest(scenario=scenario):
                     for path in state_directory.iterdir():
@@ -264,7 +269,11 @@ verify_seed_state
                         capture_output=True,
                         text=True,
                     )
-                    self.assertEqual(result.returncode, expected_return_code)
+                    self.assertEqual(
+                        result.returncode,
+                        expected_return_code,
+                        result.stderr,
+                    )
 
                     if expected_return_code == 0:
                         self.assertEqual(
