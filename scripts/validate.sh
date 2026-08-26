@@ -74,6 +74,25 @@ for name, asset_path, asset_variable, sha_variable, destination, mode in assets:
     if expected_call not in user_data:
         raise SystemExit(f"pinned transport mismatch: {name}")
 
+expected_download_calls = [
+    (f"${asset_variable}", f"${sha_variable}", destination, mode)
+    for _, _, asset_variable, sha_variable, destination, mode in assets
+]
+actual_download_calls = []
+for line in user_data.splitlines():
+    stripped_line = line.strip()
+    if not re.match(r"download_asset(?:\s|$)", stripped_line):
+        continue
+    parsed_call = re.fullmatch(
+        r'download_asset\s+"([^\"]+)"\s+"([^\"]+)"\s+"([^\"]+)"\s+(\d+)',
+        stripped_line,
+    )
+    if parsed_call is None:
+        raise SystemExit("pinned transport mismatch: malformed download call")
+    actual_download_calls.append(parsed_call.groups())
+if actual_download_calls != expected_download_calls:
+    raise SystemExit("pinned transport mismatch: ordered download calls")
+
 asset_base_url = assignments.get("ASSET_BASE_URL", "")
 expected_asset_base_url = (
     "https://raw.githubusercontent.com/pluralsight-cloud/"
@@ -174,7 +193,8 @@ if missing_outputs:
 
 def action_set(statement):
     actions = statement["Action"]
-    return {actions} if isinstance(actions, str) else set(actions)
+    values = [actions] if isinstance(actions, str) else actions
+    return {action.lower() for action in values}
 
 
 def statement_map(policy):
@@ -187,7 +207,7 @@ for logical_id, resource in roles.items():
         continue
     for policy in resource.get("Properties", {}).get("Policies", []):
         for statement in policy["PolicyDocument"].get("Statement", []):
-            if "iam:PassRole" in action_set(statement):
+            if "iam:passrole" in action_set(statement):
                 raise SystemExit("IAM boundary violation: iam:PassRole is forbidden")
 
 workstation_policies = {
@@ -223,6 +243,10 @@ expected_permanent_actions = {
     "InspectOrdersAlarm": {"cloudwatch:DescribeAlarmHistory", "cloudwatch:DescribeAlarms"},
     "SignalWorkstationReadiness": {"cloudformation:SignalResource"},
 }
+expected_permanent_actions = {
+    sid: {action.lower() for action in actions}
+    for sid, actions in expected_permanent_actions.items()
+}
 if set(permanent_statements) != set(expected_permanent_actions) or any(
     action_set(permanent_statements[sid]) != actions
     for sid, actions in expected_permanent_actions.items()
@@ -256,6 +280,10 @@ expected_bootstrap_actions = {
     "PublishOrdersV2DuringBootstrap": {"lambda:GetFunction", "lambda:UpdateFunctionCode"},
     "VerifyOrdersAlarmDatapointDuringBootstrap": {"cloudwatch:GetMetricStatistics"},
     "RemoveOrdersV2BootstrapPermission": {"iam:DeleteRolePolicy"},
+}
+expected_bootstrap_actions = {
+    sid: {action.lower() for action in actions}
+    for sid, actions in expected_bootstrap_actions.items()
 }
 if set(bootstrap_statements) != set(expected_bootstrap_actions) or any(
     action_set(bootstrap_statements[sid]) != actions

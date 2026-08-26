@@ -84,6 +84,18 @@ class Task10ValidationTests(unittest.TestCase):
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn("pinned transport mismatch: V2", rejected.stderr)
 
+    def test_candidate_gate_rejects_an_extra_download_call(self):
+        self.assert_clean_candidate_passes()
+        self.replace_template(
+            'download_asset "$V2_ASSET" "$V2_SHA256" "$V2_ARCHIVE" 0644\n',
+            'download_asset "$V2_ASSET" "$V2_SHA256" "$V2_ARCHIVE" 0644\n'
+            '            download_asset "$APPSPEC_ASSET" "$V2_SHA256" "$V2_ARCHIVE" 0644\n',
+        )
+
+        rejected = self.run_gate()
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("pinned transport mismatch: ordered download calls", rejected.stderr)
+
     def test_candidate_gate_rejects_broadened_iam_permissions(self):
         self.assert_clean_candidate_passes()
         self.replace_template(
@@ -96,6 +108,25 @@ class Task10ValidationTests(unittest.TestCase):
             "            Statement:\n"
             "              - Effect: Allow\n"
             "                Action: iam:PassRole\n"
+            "                Resource: '*'\n",
+        )
+
+        rejected = self.run_gate()
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("IAM boundary violation: iam:PassRole is forbidden", rejected.stderr)
+
+    def test_candidate_gate_rejects_case_variant_pass_role(self):
+        self.assert_clean_candidate_passes()
+        self.replace_template(
+            "      RoleName: globomantics-orders-codedeploy-service-role\n",
+            "      RoleName: globomantics-orders-codedeploy-service-role\n"
+            "      Policies:\n"
+            "        - PolicyName: forbidden-pass-role\n"
+            "          PolicyDocument:\n"
+            "            Version: '2012-10-17'\n"
+            "            Statement:\n"
+            "              - Effect: Allow\n"
+            "                Action: IAM:PassRole\n"
             "                Resource: '*'\n",
         )
 
