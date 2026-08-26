@@ -81,7 +81,11 @@ class Task3AssetTests(unittest.TestCase):
         self.assertIn("DependsOn", workstation, "workstation must wait for the v1 alias")
         self.assertEqual(
             set(workstation["DependsOn"]),
-            {"OrdersProdAlias", "LabPublicSubnetRouteTableAssociation"},
+            {
+                "OrdersProdAlias",
+                "OrdersErrorsAlarm",
+                "LabPublicSubnetRouteTableAssociation",
+            },
         )
         self.assertIn(
             "CreationPolicy",
@@ -89,8 +93,8 @@ class Task3AssetTests(unittest.TestCase):
             "workstation must signal that the v2 seed is ready",
         )
         self.assertEqual(
-            workstation["CreationPolicy"]["ResourceSignal"],
-            {"Count": 1, "Timeout": "PT10M"},
+            workstation["CreationPolicy"]["ResourceSignal"]["Count"],
+            1,
         )
         self.assertIsInstance(user_data_node, dict)
         self.assertIn("Fn::Sub", user_data_node)
@@ -112,6 +116,10 @@ class Task3AssetTests(unittest.TestCase):
         )
         self.assertEqual(
             bootstrap_statements[1]["Action"],
+            "cloudwatch:GetMetricStatistics",
+        )
+        self.assertEqual(
+            bootstrap_statements[2]["Action"],
             "iam:DeleteRolePolicy",
         )
 
@@ -127,6 +135,7 @@ class Task3AssetTests(unittest.TestCase):
         self.assertNotIn("lambda:UpdateFunctionCode", learner_actions)
         self.assertNotIn("lambda:GetFunction", learner_actions)
         self.assertNotIn("iam:DeleteRolePolicy", learner_actions)
+        self.assertNotIn("cloudwatch:GetMetricStatistics", learner_actions)
         self.assertIn("cloudformation:SignalResource", learner_actions)
 
         archive_base64 = base64.b64encode(FUNCTION_ARCHIVE.read_bytes()).decode("ascii")

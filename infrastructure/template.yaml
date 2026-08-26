@@ -179,6 +179,10 @@ Resources:
                   - lambda:UpdateFunctionCode
                 Resource:
                   Fn::Sub: arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:globomantics-orders
+              - Sid: VerifyOrdersAlarmDatapointDuringBootstrap
+                Effect: Allow
+                Action: cloudwatch:GetMetricStatistics
+                Resource: '*'
               - Sid: RemoveOrdersV2BootstrapPermission
                 Effect: Allow
                 Action: iam:DeleteRolePolicy
@@ -261,9 +265,9 @@ Resources:
       AlarmName: globomantics-orders-errors
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
-        - Name: FunctionName
+        - Name: Resource
           Value:
-            Ref: OrdersFunction
+            Fn::Sub: ${OrdersFunction}:prod
       EvaluationPeriods: 1
       DatapointsToAlarm: 1
       MetricName: Errors
@@ -281,6 +285,7 @@ Resources:
         Timeout: PT10M
     DependsOn:
       - OrdersProdAlias
+      - OrdersErrorsAlarm
       - LabPublicSubnetRouteTableAssociation
     Properties:
       IamInstanceProfile:
@@ -309,8 +314,12 @@ Resources:
             V2_ARCHIVE=$LAB_ROOT/assets/function/v2.zip
             V2_SHA256=2027a77a46868f6ac0a806d6cf0c5971fddcc72e8196009a507248fedcce72de
             FUNCTION_NAME=globomantics-orders
+            ALARM_NAME=globomantics-orders-errors
             ROLE_NAME=globomantics-orders-workstation-role
             BOOTSTRAP_POLICY_NAME=globomantics-orders-v2-bootstrap
+            ALARM_MAX_ATTEMPTS=48
+            ALARM_POLL_SECONDS=5
+            INVOKE_LOOP_GZIP_BASE64='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'
             STACK_NAME=${AWS::StackName}
             AWS_REGION=${AWS::Region}
             INSTANCE_ID=$(cat /var/lib/cloud/data/instance-id 2>/dev/null || hostname)
@@ -407,6 +416,122 @@ Resources:
             PY
             }
 
+            prewarm_alarm() {
+              ALARM_QUERY='MetricAlarms[0].{AlarmName:AlarmName,ComparisonOperator:ComparisonOperator,DatapointsToAlarm:DatapointsToAlarm,Dimensions:Dimensions,EvaluationPeriods:EvaluationPeriods,MetricName:MetricName,Namespace:Namespace,Period:Period,StateValue:StateValue,Statistic:Statistic,Threshold:Threshold,TreatMissingData:TreatMissingData}'
+              ALARM_BEFORE="$LAB_ROOT/state/alarm-before.json"
+              ALARM_READY="$LAB_ROOT/state/alarm-ready.json"
+              ALARM_ZERO="$LAB_ROOT/state/alarm-zero-datapoints.json"
+              ALARM_V1_INVOKE=$(mktemp)
+              ALARM_V1_PAYLOAD=$(mktemp)
+              METRIC_DATA=$(mktemp)
+
+              aws cloudwatch describe-alarms \
+                --alarm-names "$ALARM_NAME" \
+                --query "$ALARM_QUERY" \
+                --output json \
+                --no-cli-pager > "$ALARM_BEFORE"
+
+              ALARM_READY_REACHED=false
+              for attempt in $(seq 1 "$ALARM_MAX_ATTEMPTS"); do
+                aws lambda invoke \
+                  --function-name "$FUNCTION_NAME" \
+                  --qualifier prod \
+                  --payload '{}' \
+                  --cli-binary-format raw-in-base64-out \
+                  --no-cli-pager \
+                  "$ALARM_V1_PAYLOAD" > "$ALARM_V1_INVOKE"
+
+                python3 - "$ALARM_V1_INVOKE" "$ALARM_V1_PAYLOAD" <<'PY'
+            import json
+            import sys
+
+            invoke = json.load(open(sys.argv[1], encoding="utf-8"))
+            payload = json.load(open(sys.argv[2], encoding="utf-8"))
+            if invoke.get("StatusCode") != 200:
+                raise SystemExit("alarm pre-warm v1 invoke did not return status 200")
+            if invoke.get("FunctionError") is not None:
+                raise SystemExit("alarm pre-warm v1 invoke returned FunctionError")
+            if invoke.get("ExecutedVersion") != "1":
+                raise SystemExit("alarm pre-warm invoke did not execute version 1")
+            if payload != dict(order_id="order-1001", status="confirmed", version="v1"):
+                raise SystemExit("alarm pre-warm v1 invoke returned an unexpected payload")
+            PY
+
+                aws cloudwatch describe-alarms \
+                  --alarm-names "$ALARM_NAME" \
+                  --query "$ALARM_QUERY" \
+                  --output json \
+                  --no-cli-pager > "$ALARM_READY"
+
+                read -r METRIC_START METRIC_END < <(python3 - <<'PY'
+            from datetime import datetime, timedelta, timezone
+
+            end = datetime.now(timezone.utc)
+            start = end - timedelta(minutes=5)
+            timestamp = "%Y-%m-%dT%H:%M:%SZ"
+            print(start.strftime(timestamp), end.strftime(timestamp))
+            PY
+                )
+                aws cloudwatch get-metric-statistics \
+                  --namespace AWS/Lambda \
+                  --metric-name Errors \
+                  --dimensions Name=Resource,Value="$FUNCTION_NAME:prod" \
+                  --start-time "$METRIC_START" \
+                  --end-time "$METRIC_END" \
+                  --period 60 \
+                  --statistics Sum \
+                  --output json \
+                  --no-cli-pager > "$METRIC_DATA"
+
+                if python3 - "$ALARM_READY" "$METRIC_DATA" <<'PY'
+            import json
+            import sys
+
+            alarm = json.load(open(sys.argv[1], encoding="utf-8"))
+            metric_data = json.load(open(sys.argv[2], encoding="utf-8"))
+            expected = dict(
+                AlarmName="globomantics-orders-errors",
+                ComparisonOperator="GreaterThanThreshold",
+                DatapointsToAlarm=1,
+                Dimensions=[dict(Name="Resource", Value="globomantics-orders:prod")],
+                EvaluationPeriods=1,
+                MetricName="Errors",
+                Namespace="AWS/Lambda",
+                Period=60,
+                StateValue="OK",
+                Statistic="Sum",
+                Threshold=0.0,
+                TreatMissingData="notBreaching",
+            )
+            if alarm != expected:
+                raise SystemExit("orders errors alarm configuration is unexpected")
+            datapoints = metric_data.get("Datapoints") or []
+            if not any(
+                float(point.get("SampleCount", 0)) >= 1
+                and float(point.get("Sum", 1)) == 0
+                for point in datapoints
+            ):
+                raise SystemExit("orders errors alarm OK state has no real zero-error datapoint")
+            PY
+                then
+                  mv "$METRIC_DATA" "$ALARM_ZERO"
+                  ALARM_READY_REACHED=true
+                  break
+                fi
+
+                sleep "$ALARM_POLL_SECONDS"
+              done
+
+              if [ "$ALARM_READY_REACHED" != 'true' ]; then
+                rm -f "$ALARM_V1_INVOKE" "$ALARM_V1_PAYLOAD" "$METRIC_DATA"
+                echo 'Orders errors alarm did not reach OK with a real zero-error datapoint.' >&2
+                exit 1
+              fi
+
+              rm -f "$ALARM_V1_INVOKE" "$ALARM_V1_PAYLOAD"
+              chown cloud_user:cloud_user "$ALARM_BEFORE" "$ALARM_READY" "$ALARM_ZERO"
+            }
+
             signal_bootstrap() {
               UNIQUE_ID="$INSTANCE_ID"
               if [ "$1" = 'FAILURE' ]; then
@@ -425,6 +550,7 @@ Resources:
             BOOTSTRAP_STAGE=archive-seed
             install -d -o cloud_user -g cloud_user \
               "$LAB_ROOT/assets/function" \
+              "$LAB_ROOT/bin" \
               "$LAB_ROOT/state"
 
             base64 --decode > "$V2_ARCHIVE" <<'V2_ZIP_BASE64'
@@ -442,6 +568,14 @@ Resources:
               sleep 2
             done
             aws sts get-caller-identity >/dev/null
+
+            prewarm_alarm &
+            ALARM_PID=$!
+
+            BOOTSTRAP_STAGE=invoke-helper-install
+            base64 -d <<<"$INVOKE_LOOP_GZIP_BASE64" | gzip -d > "$LAB_ROOT/bin/invoke-loop"
+            chown cloud_user:cloud_user "$LAB_ROOT/bin/invoke-loop"
+            chmod 755 "$LAB_ROOT/bin/invoke-loop"
 
             BOOTSTRAP_STAGE=lambda-update-readiness
             UPDATE_PERMISSION_READY=false
@@ -490,6 +624,12 @@ Resources:
             BOOTSTRAP_STAGE=state-file
             printf '%s\n' "$V2_VERSION" > "$LAB_ROOT/state/v2-version.txt"
             chown cloud_user:cloud_user "$LAB_ROOT/state/"*
+
+            BOOTSTRAP_STAGE=alarm-prewarm
+            if ! wait "$ALARM_PID"; then
+              signal_bootstrap FAILURE
+              exit 1
+            fi
 
             BOOTSTRAP_STAGE=iam-policy-delete
             aws iam delete-role-policy \
