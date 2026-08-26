@@ -102,7 +102,7 @@ asset_base_url = assignments.get("ASSET_BASE_URL", "")
 expected_asset_base_url = (
     "https://raw.githubusercontent.com/pluralsight-cloud/"
     "Lab-Release-and-Roll-Back-an-AWS-Cloud-Native-Workload/"
-    "b49e821a9871debed6cc1a7d98df0513f06a2199"
+    "7106a715f0a404be6cedaa3635eb6135e4883fbd"
 )
 if asset_base_url != expected_asset_base_url:
     raise SystemExit("pinned GitHub raw URL must match the canonical immutable commit")

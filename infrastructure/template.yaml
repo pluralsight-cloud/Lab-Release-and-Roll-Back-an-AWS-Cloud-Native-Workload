@@ -344,12 +344,12 @@ Resources:
             BOOTSTRAP_POLICY_NAME=globomantics-orders-v2-bootstrap
             ALARM_MAX_ATTEMPTS=48
             ALARM_POLL_SECONDS=5
-            ASSET_BASE_URL=https://raw.githubusercontent.com/pluralsight-cloud/Lab-Release-and-Roll-Back-an-AWS-Cloud-Native-Workload/b49e821a9871debed6cc1a7d98df0513f06a2199
+            ASSET_BASE_URL=https://raw.githubusercontent.com/pluralsight-cloud/Lab-Release-and-Roll-Back-an-AWS-Cloud-Native-Workload/7106a715f0a404be6cedaa3635eb6135e4883fbd
             V2_ASSET=assets/function/v2.zip
             APPSPEC_ASSET=assets/appspec/release-v2.json
             APPSPEC_SHA256=f77f57264120e0bbc439d490d02cf887392ce0da1316985dfe9887f8b74b7c9c
             INVOKE_LOOP_ASSET=assets/helpers/invoke-loop.py
-            INVOKE_LOOP_SHA256=e7193927e430bed18ccae6c90eba92fc81597e8eb22700dd7e4515ecb62453d2
+            INVOKE_LOOP_SHA256=3dbfc959b289b748bd4d5be3415f1ac65f5a8a7a243a33af9cd78dd5201ef544
             RECORD_OUTCOME_ASSET=assets/helpers/record-outcome.py
             RECORD_OUTCOME_SHA256=90aadab2525ac5843f10a8e55e295ebd922c47db401296c88a0237e7ada26b9c
             STACK_NAME=${AWS::StackName}

@@ -11,7 +11,7 @@ import yaml
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = REPOSITORY_ROOT / "infrastructure/template.yaml"
-PINNED_COMMIT = "b49e821a9871debed6cc1a7d98df0513f06a2199"
+PINNED_COMMIT = "7106a715f0a404be6cedaa3635eb6135e4883fbd"
 ASSET_BASE_URL = (
     "https://raw.githubusercontent.com/pluralsight-cloud/"
     "Lab-Release-and-Roll-Back-an-AWS-Cloud-Native-Workload/"
@@ -32,7 +32,7 @@ ASSETS = (
     ),
     (
         "assets/helpers/invoke-loop.py",
-        "e7193927e430bed18ccae6c90eba92fc81597e8eb22700dd7e4515ecb62453d2",
+        "3dbfc959b289b748bd4d5be3415f1ac65f5a8a7a243a33af9cd78dd5201ef544",
         "/home/cloud_user/lab/bin/invoke-loop",
         "0755",
     ),
