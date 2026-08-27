@@ -110,6 +110,7 @@ class Task6ReleaseAssetTests(unittest.TestCase):
                 "lambda:ListVersionsByFunction",
                 "codedeploy:CreateDeployment",
                 "codedeploy:GetApplication",
+                "codedeploy:GetApplicationRevision",
                 "codedeploy:GetDeployment",
                 "codedeploy:GetDeploymentConfig",
                 "codedeploy:GetDeploymentGroup",

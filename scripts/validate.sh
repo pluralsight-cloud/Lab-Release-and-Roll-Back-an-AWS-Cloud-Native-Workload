@@ -238,6 +238,7 @@ expected_permanent_actions = {
     "OperateOrdersDeployment": {
         "codedeploy:CreateDeployment",
         "codedeploy:GetApplication",
+        "codedeploy:GetApplicationRevision",
         "codedeploy:GetDeployment",
         "codedeploy:GetDeploymentConfig",
         "codedeploy:GetDeploymentGroup",
