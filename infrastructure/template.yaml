@@ -153,7 +153,7 @@ Resources:
                 Resource:
                   - Fn::Sub: arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:application:globomantics-orders-app
                   - Fn::Sub: arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:globomantics-orders-app/globomantics-orders-dg
-                  - Fn::Sub: arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentconfig:CodeDeployDefault.LambdaCanary10Percent5Minutes
+                  - Fn::Sub: arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentconfig:CodeDeployDefault.LambdaCanary10Percent30Minutes
               - Sid: StopOrdersDeployment
                 Effect: Allow
                 Action: codedeploy:StopDeployment
@@ -250,7 +250,7 @@ Resources:
         Enabled: true
         Events:
           - DEPLOYMENT_STOP_ON_REQUEST
-      DeploymentConfigName: CodeDeployDefault.LambdaCanary10Percent5Minutes
+      DeploymentConfigName: CodeDeployDefault.LambdaCanary10Percent30Minutes
       DeploymentGroupName: globomantics-orders-dg
       DeploymentStyle:
         DeploymentOption: WITH_TRAFFIC_CONTROL

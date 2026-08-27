@@ -167,6 +167,20 @@ class Task10ValidationTests(unittest.TestCase):
             rejected.stderr,
         )
 
+    def test_candidate_gate_rejects_a_canary_window_too_short_for_manual_rollback(self):
+        template = self.candidate_root / "infrastructure/template.yaml"
+        source = template.read_text(encoding="utf-8")
+        self.assertIn("CodeDeployDefault.LambdaCanary10Percent30Minutes", source)
+        source = source.replace(
+            "CodeDeployDefault.LambdaCanary10Percent30Minutes",
+            "CodeDeployDefault.LambdaCanary10Percent5Minutes",
+        )
+        template.write_text(source, encoding="utf-8")
+
+        rejected = self.run_gate()
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("learner-safe canary window", rejected.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

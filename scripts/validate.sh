@@ -207,6 +207,11 @@ def statement_map(policy):
 
 
 roles = template["Resources"]
+deployment_group = roles["OrdersDeploymentGroup"]["Properties"]
+expected_canary_configuration = "CodeDeployDefault.LambdaCanary10Percent30Minutes"
+if deployment_group.get("DeploymentConfigName") != expected_canary_configuration:
+    raise SystemExit("learner-safe canary window must remain 30 minutes")
+
 for logical_id, resource in roles.items():
     if resource.get("Type") != "AWS::IAM::Role":
         continue
@@ -267,7 +272,7 @@ expected_permanent_resources = {
     "OperateOrdersDeployment": [
         {"Fn::Sub": "arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:application:globomantics-orders-app"},
         {"Fn::Sub": "arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:globomantics-orders-app/globomantics-orders-dg"},
-        {"Fn::Sub": "arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentconfig:CodeDeployDefault.LambdaCanary10Percent5Minutes"},
+        {"Fn::Sub": "arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentconfig:CodeDeployDefault.LambdaCanary10Percent30Minutes"},
     ],
     "StopOrdersDeployment": {
         "Fn::Sub": "arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:globomantics-orders-app/globomantics-orders-dg"
@@ -317,7 +322,6 @@ if (
 ):
     raise SystemExit("IAM boundary violation: bootstrap policy removal is not after readiness join")
 
-deployment_group = template["Resources"]["OrdersDeploymentGroup"]["Properties"]
 if "AlarmConfiguration" in deployment_group or "DEPLOYMENT_STOP_ON_ALARM" in deployment_group[
     "AutoRollbackConfiguration"
 ]["Events"]:
